@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify, Response, send_file
 from flask_cors import CORS
 import anthropic
 import base64
@@ -38,9 +38,7 @@ def detect_rooms(img_bytes):
         rw   = stats[i, cv2.CC_STAT_WIDTH]
         rh   = stats[i, cv2.CC_STAT_HEIGHT]
         cx, cy = centroids[i]
-        min_area = total_px * 0.00006
-        max_area = total_px * 0.08
-        if area < min_area or area > max_area:
+        if area < total_px * 0.00006 or area > total_px * 0.08:
             continue
         aspect = max(rw, rh) / max(min(rw, rh), 1)
         if aspect > 6:
@@ -53,8 +51,7 @@ def select_gateways(rooms):
         return []
     areas = sorted([r["area"] for r in rooms])
     median_area = areas[len(areas) // 2]
-    LARGE_THRESHOLD = median_area * 10.0
-    valid = [r for r in rooms if r["area"] <= LARGE_THRESHOLD and r["aspect"] <= 4.0]
+    valid = [r for r in rooms if r["area"] <= median_area * 10.0 and r["aspect"] <= 4.0]
     if not valid:
         valid = rooms
     ROW_H = 0.04
@@ -81,7 +78,9 @@ Candidates (rx/ry = 0.0-1.0 fractions of image width/height):
 {candidate_list}
 Return ONLY a JSON array of valid indices to keep, e.g. [0,1,3,5]. No explanation, no markdown."""
     resp = client.messages.create(
-        model="claude-opus-4-20250514", max_tokens=2000, temperature=0,
+        model="claude-opus-4-20250514",
+        max_tokens=2000,
+        temperature=0,
         messages=[{"role":"user","content":[
             {"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":overview_b64}},
             {"type":"text","text":prompt}
@@ -94,13 +93,8 @@ Return ONLY a JSON array of valid indices to keep, e.g. [0,1,3,5]. No explanatio
     indices = json.loads(raw[s:e+1])
     return [rooms[i] for i in indices if 0 <= i < len(rooms)]
 
-
-
-
 @app.route("/", methods=["GET"])
 def index():
-    from flask import send_file
-    import os
     return send_file(os.path.join(os.path.dirname(os.path.abspath(__file__)), "gateway-planner.html"))
 
 @app.route("/health", methods=["GET"])
@@ -179,8 +173,6 @@ def detect():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    print("Gateway Planner backend running on http://localhost:5050")
+    print("Gateway Planner backend running")
     print(f"OpenCV version: {cv2.__version__}")
-    print(f"min_area threshold: 0.00006")
-    print(f"MIN_DIST dedup: 0.012")
-    app.run(host="0.0.0.0", port=5050, debug=False)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5050)), debug=False)
