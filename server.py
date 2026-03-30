@@ -51,15 +51,26 @@ def select_gateways(rooms):
         return []
     areas = sorted([r["area"] for r in rooms])
     median_area = areas[len(areas) // 2]
-    valid = [r for r in rooms if r["area"] <= median_area * 10.0 and r["aspect"] <= 4.0]
-    if not valid:
+valid = [r for r in rooms if r["area"] <= median_area * 6.0 and r["aspect"] <= 4.0]
+if not valid:
         valid = rooms
     ROW_H = 0.04
     def sort_key(r):
         row = int(r["ry"] / ROW_H)
         return (row, r["rx"] if row % 2 == 0 else -r["rx"])
-    selected = sorted(valid, key=sort_key)
-    MIN_DIST = 0.006
+selected = sorted(valid, key=sort_key)
+
+# For dense floors: apply stride to avoid over-saturating small rooms
+# Every other room in zig-zag order gives ~1 gateway per 2 rooms
+strided = []
+for i, r in enumerate(selected):
+    if i % 2 == 0:
+        strided.append(r)
+# Redundancy pass: add back any room that's too far from nearest gateway
+for r in selected:
+    if not any(((r["rx"]-s["rx"])**2+(r["ry"]-s["ry"])**2)**0.5 < 0.04 for s in strided):
+        strided.append(r)
+selected = strided    MIN_DIST = 0.018
     deduped = []
     for r in selected:
         if not any(((r["rx"]-s["rx"])**2+(r["ry"]-s["ry"])**2)**0.5 < MIN_DIST for s in deduped):
