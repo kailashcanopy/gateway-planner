@@ -101,6 +101,12 @@ def index():
     import os
     return send_file(os.path.join(os.path.dirname(os.path.abspath(__file__)), "gateway-planner.html"))
 
+@app.route("/", methods=["GET"])
+def index():
+    from flask import send_file
+    import os
+    return send_file(os.path.join(os.path.dirname(os.path.abspath(__file__)), "gateway-planner.html"))
+
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok", "opencv": cv2.__version__})
