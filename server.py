@@ -94,6 +94,13 @@ Return ONLY a JSON array of valid indices to keep, e.g. [0,1,3,5]. No explanatio
     indices = json.loads(raw[s:e+1])
     return [rooms[i] for i in indices if 0 <= i < len(rooms)]
 
+
+@app.route("/", methods=["GET"])
+def index():
+    from flask import send_file
+    import os
+    return send_file(os.path.join(os.path.dirname(os.path.abspath(__file__)), "gateway-planner.html"))
+
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok", "opencv": cv2.__version__})
