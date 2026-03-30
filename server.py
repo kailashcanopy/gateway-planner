@@ -280,38 +280,59 @@ def select_gateways(rooms: list[dict]) -> list[dict]:
 # stairwells, corridors, or outside the building — semantic
 # filtering that pixel-level CV can't reliably do on its own.
 
-def validate_with_claude(rooms: list[dict], overview_b64: str, api_key: str) -> list[dict]:
+def label_gateways_with_claude(selected: list[dict], overview_b64: str, api_key: str) -> list[dict]:
     """
-    Uses Claude vision to filter out semantically invalid placements.
-    Removes gateways in: corridors, bathrooms, stairwells, elevators,
-    waiting rooms, vestibules, outside building boundary.
+    Uses Claude vision to identify room names/numbers for each gateway position
+    and assigns meaningful labels.
 
-    Returns filtered subset of rooms.
-    Falls back to all rooms if Claude call fails.
+    Naming conventions:
+    - Patient Room 305  → PR 305 GW-1, PR 305 GW-2 (if multiple in same room)
+    - Lobby             → Lobby GW-1
+    - Nurse Station     → NS GW-1
+    - Conference Room   → Conf GW-1
+    - Office 210        → Office 210 GW-1
+    - Unknown/unlabeled → GW-01 (fallback)
+
+    Returns selected list with updated 'label' fields.
     """
     client = anthropic.Anthropic(api_key=api_key)
 
     candidate_list = "\n".join(
         f"{i}: rx={r['rx']:.3f}, ry={r['ry']:.3f}"
-        for i, r in enumerate(rooms)
+        for i, r in enumerate(selected)
     )
 
-    prompt = f"""You are reviewing BLE gateway placements on a hospital floor plan.
-OpenCV detected {len(rooms)} candidate room centroids. Filter out any that are:
-- Outside the building boundary (white space around the building)
-- In corridors, hallways, vestibules, waiting rooms
-- In restrooms, stairwells, elevators, mechanical/utility rooms
+    prompt = f"""You are analyzing a hospital/clinic floor plan image.
+I have placed BLE gateways at the following normalized coordinates (rx/ry = 0.0-1.0 fractions of image width/height):
 
-Candidates (rx/ry = 0.0–1.0 fractions of image width/height):
 {candidate_list}
 
-Return ONLY a JSON array of valid indices to keep, e.g. [0,1,3,5]
-No explanation, no markdown."""
+For each gateway position, identify what room or space it falls inside based on the floor plan labels visible in the image.
+
+Naming rules:
+- Patient Room / Patient Rm / PR + number → "PR [number]"
+- Nurse Station / Nursing Station → "NS"
+- Conference Room / Conf Rm → "Conf"
+- Lobby / Reception / Waiting → use the exact name
+- Office + number → "Office [number]"
+- Corridor / Hallway → "Corridor" (should be rare)
+- If you can read a room number, include it
+- If multiple gateways fall in the same room, append GW-1, GW-2, etc.
+- If you cannot identify the room, use null
+
+Return ONLY a JSON array with one entry per gateway, in the same order:
+[
+  {{"index": 0, "room": "PR 305"}},
+  {{"index": 1, "room": "NS"}},
+  {{"index": 2, "room": null}},
+  ...
+]
+No explanation, no markdown, just the JSON array."""
 
     try:
         resp = client.messages.create(
             model="claude-opus-4-20250514",
-            max_tokens=2000,
+            max_tokens=4000,
             temperature=0,
             messages=[{
                 "role": "user",
@@ -324,11 +345,39 @@ No explanation, no markdown."""
         raw = resp.content[0].text
         s, e = raw.find("["), raw.rfind("]")
         if s < 0 or e < 0:
-            return rooms
-        indices = json.loads(raw[s:e+1])
-        return [rooms[i] for i in indices if 0 <= i < len(rooms)]
+            return selected
+
+        room_data = json.loads(raw[s:e+1])
+
+        # Build room → count map to handle multiple gateways per room
+        room_counts = {}
+        room_index  = {}
+        for entry in room_data:
+            room = entry.get("room")
+            if room:
+                room_counts[room] = room_counts.get(room, 0) + 1
+
+        # Assign labels
+        room_seen = {}
+        labeled = list(selected)
+        for entry in room_data:
+            idx  = entry.get("index")
+            room = entry.get("room")
+            if idx is None or idx >= len(labeled):
+                continue
+            if room:
+                room_seen[room] = room_seen.get(room, 0) + 1
+                gw_num = room_seen[room]
+                if room_counts[room] > 1:
+                    labeled[idx]["label"] = f"{room} GW-{gw_num}"
+                else:
+                    labeled[idx]["label"] = f"{room} GW-1"
+            # If room is null, keep the fallback GW-XX label already assigned
+
+        return labeled
+
     except Exception:
-        return rooms  # fallback: return all if Claude call fails
+        return selected  # fallback: keep numeric labels
 
 
 # ── Flask Routes ──────────────────────────────────────────
@@ -381,22 +430,27 @@ def detect():
         # Apply placement strategy
         selected = select_gateways(rooms)
 
-        # Optional: Claude semantic validation pass
+        # Assign fallback numeric labels first
+        for i, r in enumerate(selected):
+            r["label"] = f"GW-{str(i+1).zfill(2)}"
+
+        # Optional: Claude room labeling + semantic validation pass
         if do_validate and api_key:
             arr    = np.frombuffer(img_bytes, np.uint8)
             img_cv = cv2.imdecode(arr, cv2.IMREAD_COLOR)
             h, w   = img_cv.shape[:2]
-            sc     = min(1.0, 1000 / max(w, h))
+            sc     = min(1.0, 1200 / max(w, h))
             small  = cv2.resize(img_cv, (int(w * sc), int(h * sc)))
-            _, buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            _, buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 90])
             overview_b64 = base64.b64encode(buf).decode()
-            selected = validate_with_claude(selected, overview_b64, api_key)
+            # Label gateways by room name (also filters invalid placements)
+            selected = label_gateways_with_claude(selected, overview_b64, api_key)
 
         pins = [
             {
                 "rx":     r["rx"],
                 "ry":     r["ry"],
-                "label":  f"GW-{str(i+1).zfill(2)}",
+                "label":  r.get("label", f"GW-{str(i+1).zfill(2)}"),
                 "status": "green"
             }
             for i, r in enumerate(selected)
