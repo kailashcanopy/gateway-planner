@@ -535,6 +535,54 @@ def debug():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/test-labels", methods=["POST"])
+def test_labels():
+    """Debug: returns raw Claude response for room labeling"""
+    try:
+        img_bytes = request.files["image"].read()
+        api_key = request.form.get("api_key", ANTHROPIC_API_KEY)
+        
+        rooms = detect_rooms(img_bytes)
+        selected = select_gateways(rooms)
+        for i, r in enumerate(selected):
+            r["label"] = f"GW-{str(i+1).zfill(2)}"
+
+        arr = np.frombuffer(img_bytes, np.uint8)
+        img_cv = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        h, w = img_cv.shape[:2]
+        sc = min(1.0, 1200/max(w,h))
+        small = cv2.resize(img_cv, (int(w*sc), int(h*sc)))
+        _, buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        overview_b64 = base64.b64encode(buf).decode()
+
+        client = anthropic.Anthropic(api_key=api_key)
+        candidate_list = "\n".join(
+            f"{i}: rx={r['rx']:.3f}, ry={r['ry']:.3f}"
+            for i, r in enumerate(selected[:20])  # first 20 only for test
+        )
+        prompt = f"""Look at this floor plan. For each coordinate, tell me what room it's in.
+{candidate_list}
+Return JSON array: [{{"index":0,"room":"room name or null"}}]"""
+
+        resp = client.messages.create(
+            model="claude-opus-4-20250514",
+            max_tokens=2000,
+            temperature=0,
+            messages=[{"role":"user","content":[
+                {"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":overview_b64}},
+                {"type":"text","text":prompt}
+            ]}]
+        )
+        
+        return jsonify({
+            "rooms_detected": len(rooms),
+            "gateways_selected": len(selected),
+            "claude_raw": resp.content[0].text,
+            "image_size": f"{w}x{h}",
+            "scaled_to": f"{int(w*sc)}x{int(h*sc)}"
+        })
+    except Exception as e:
+        return jsonify({"error": str(e), "type": type(e).__name__}), 500
 
 # ── Entry point ───────────────────────────────────────────
 
