@@ -46,35 +46,122 @@ def detect_rooms(img_bytes):
         rooms.append({"rx": float(cx/w), "ry": float(cy/h), "area": int(area), "aspect": float(aspect)})
     return rooms
 
+def classify_facility(rooms):
+    """
+    Classify as large hospital vs outpatient/MOB based on room count and size.
+    Large hospital: many small rooms (patient rooms ~100-300 sqft)
+    MOB/outpatient: fewer, larger rooms (exam rooms ~150-400 sqft, offices bigger)
+    """
+    if len(rooms) > 80:
+        return 'hospital'
+    areas = sorted([r["area"] for r in rooms])
+    median = areas[len(areas)//2] if areas else 0
+    # If median room is large, likely MOB/outpatient
+    return 'mob' if median > 3000 else 'hospital'
+
 def select_gateways(rooms):
+    """
+    Gateway placement following deployment guidelines:
+    1. Work left-to-right, top-to-bottom (systematic sweep)
+    2. Perimeter rooms first, then interior
+    3. Hospital: every other room; MOB/clinic: every 2 rooms
+    4. Zig-zag pattern across rows
+    5. Skip corridors, bathrooms, stairwells (aspect ratio + size filters)
+    6. Redundancy: no room >5% floor width from nearest gateway
+    7. When unsure, add extra gateways for reliability
+    """
     if not rooms:
         return []
+
+    facility = classify_facility(rooms)
+
     areas = sorted([r["area"] for r in rooms])
-    median_area = areas[len(areas) // 2]
-valid = [r for r in rooms if r["area"] <= median_area * 6.0 and r["aspect"] <= 4.0]
-if not valid:
+    n = len(areas)
+    median_area = areas[n // 2]
+    p25_area = areas[max(0, int(n * 0.25))]  # small rooms threshold
+    p75_area = areas[min(n-1, int(n * 0.75))]  # large space threshold
+
+    # ── Step 1: Filter invalid spaces ────────────────────
+    # Remove corridors (elongated), bathrooms/closets (tiny), large lobbies
+    valid = []
+    for r in rooms:
+        # Skip very elongated shapes (corridors, hallways)
+        if r["aspect"] > 3.5:
+            continue
+        # Skip tiny spaces (bathrooms, closets, vestibules) — below 25th percentile
+        if r["area"] < p25_area * 0.5:
+            continue
+        # Skip very large open spaces (lobbies, waiting rooms, large corridors)
+        if r["area"] > p75_area * 5.0:
+            continue
+        valid.append(r)
+
+    if not valid:
         valid = rooms
+
+    # ── Step 2: Detect perimeter vs interior rooms ────────
+    all_rx = [r["rx"] for r in valid]
+    all_ry = [r["ry"] for r in valid]
+    rx_min, rx_max = min(all_rx), max(all_rx)
+    ry_min, ry_max = min(all_ry), max(all_ry)
+    rx_span = (rx_max - rx_min) or 1
+    ry_span = (ry_max - ry_min) or 1
+    PERIM_BAND = 0.15  # outer 15% of bounding box = perimeter
+
+    perimeter, interior = [], []
+    for r in valid:
+        on_perim = (
+            r["rx"] < rx_min + rx_span * PERIM_BAND or
+            r["rx"] > rx_max - rx_span * PERIM_BAND or
+            r["ry"] < ry_min + ry_span * PERIM_BAND or
+            r["ry"] > ry_max - ry_span * PERIM_BAND
+        )
+        (perimeter if on_perim else interior).append(r)
+
+    # ── Step 3: Sort both groups into zig-zag order ───────
+    # Left→right on even rows, right→left on odd rows
     ROW_H = 0.04
     def sort_key(r):
         row = int(r["ry"] / ROW_H)
         return (row, r["rx"] if row % 2 == 0 else -r["rx"])
-selected = sorted(valid, key=sort_key)
 
-# For dense floors: apply stride to avoid over-saturating small rooms
-# Every other room in zig-zag order gives ~1 gateway per 2 rooms
-strided = []
-for i, r in enumerate(selected):
-    if i % 2 == 0:
-        strided.append(r)
-# Redundancy pass: add back any room that's too far from nearest gateway
-for r in selected:
-    if not any(((r["rx"]-s["rx"])**2+(r["ry"]-s["ry"])**2)**0.5 < 0.04 for s in strided):
-        strided.append(r)
-selected = strided    MIN_DIST = 0.018
+    perimeter = sorted(perimeter, key=sort_key)
+    interior  = sorted(interior,  key=sort_key)
+
+    # ── Step 4: Apply placement stride ───────────────────
+    # Perimeter: every room (guideline: outline perimeter first, full coverage)
+    # Interior hospital: every other room
+    # Interior MOB/clinic: every 2 rooms (thinner walls = less density needed)
+    stride = 1 if facility == 'hospital' else 2
+
+    selected = list(perimeter)  # all perimeter rooms
+    for i, r in enumerate(interior):
+        if i % stride == 0:
+            selected.append(r)
+
+    # ── Step 5: Dedup — remove double-pins in same room ──
+    # Two centroids within 2% of floor width = same physical room
+    MIN_DEDUP = 0.022
     deduped = []
     for r in selected:
-        if not any(((r["rx"]-s["rx"])**2+(r["ry"]-s["ry"])**2)**0.5 < MIN_DIST for s in deduped):
+        if not any(((r["rx"]-s["rx"])**2+(r["ry"]-s["ry"])**2)**0.5 < MIN_DEDUP for s in deduped):
             deduped.append(r)
+
+    # ── Step 6: Redundancy pass ───────────────────────────
+    # Any valid room more than COVERAGE_DIST from nearest gateway gets one added
+    # This ensures 1-2 gateway failures don't create dead zones
+    COVERAGE_DIST = 0.055  # ~5.5% of floor width
+    for r in valid:
+        nearest = min(
+            (((r["rx"]-s["rx"])**2+(r["ry"]-s["ry"])**2)**0.5 for s in deduped),
+            default=999
+        )
+        if nearest > COVERAGE_DIST:
+            deduped.append(r)
+
+    # Final sort for clean labeling order (left→right, top→bottom)
+    deduped.sort(key=lambda r: (int(r["ry"]/ROW_H), r["rx"]))
+
     return deduped
 
 def validate_with_claude(rooms, overview_b64, api_key):
