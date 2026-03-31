@@ -443,8 +443,11 @@ def detect():
             small  = cv2.resize(img_cv, (int(w * sc), int(h * sc)))
             _, buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 90])
             overview_b64 = base64.b64encode(buf).decode()
-            # Label gateways by room name (also filters invalid placements)
+           # Label gateways by room name (also filters invalid placements)
+            import sys
+            print(f"DEBUG: Calling labeling with {len(selected)} gateways", file=sys.stderr)
             selected = label_gateways_with_claude(selected, overview_b64, api_key)
+            print(f"DEBUG: First 5 labels after: {[r.get('label') for r in selected[:5]]}", file=sys.stderr)
 
         pins = [
             {
