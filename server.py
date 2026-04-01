@@ -193,12 +193,8 @@ def detect():
             arr = np.frombuffer(img_bytes, np.uint8)
             img_cv = cv2.imdecode(arr, cv2.IMREAD_COLOR)
             h, w = img_cv.shape[:2]
-            sc = min(1.0, 2000/max(w,h))
-            small = cv2.resize(img_cv, (int(w*sc), int(h*sc)))
-            _, buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 95])
-            overview_b64 = base64.b64encode(buf).decode()
-            print(f"DEBUG calling label_gateways_with_claude", file=sys.stderr)
-            selected = label_gateways_with_claude(selected, overview_b64, api_key)
+            print(f"DEBUG calling label_gateways_tiled", file=sys.stderr)
+            selected = label_gateways_tiled(selected, img_cv, api_key)
         pins = [{"rx": r["rx"], "ry": r["ry"], "label": r.get("label", f"GW-{str(i+1).zfill(2)}"), "status": "green"} for i, r in enumerate(selected)]
         return jsonify({"pins": pins, "total_rooms_detected": len(rooms), "selected": len(selected)})
     except Exception as e:
@@ -255,3 +251,104 @@ if __name__ == "__main__":
     print("Gateway Planner backend running")
     print(f"OpenCV version: {cv2.__version__}")
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5050)), debug=False)
+
+
+def label_gateways_tiled(selected, img_cv, api_key):
+    """
+    Labels gateways by splitting floor plan into tiles and asking Claude
+    to identify room names in each tile at high resolution.
+    """
+    if not selected:
+        return selected
+
+    h, w = img_cv.shape[:2]
+    COLS, ROWS = 3, 3
+    tile_w = w // COLS
+    tile_h = h // ROWS
+    labeled = [dict(r) for r in selected]
+    client = anthropic.Anthropic(api_key=api_key)
+
+    for row in range(ROWS):
+        for col in range(COLS):
+            x0, y0 = col * tile_w, row * tile_h
+            x1 = min(x0 + tile_w, w)
+            y1 = min(y0 + tile_h, h)
+
+            # Find gateways in this tile (with small overlap)
+            overlap = 0.02
+            tile_gws = [
+                (i, r) for i, r in enumerate(selected)
+                if (x0/w - overlap) <= r["rx"] <= (x1/w + overlap) and
+                   (y0/h - overlap) <= r["ry"] <= (y1/h + overlap)
+            ]
+            if not tile_gws:
+                continue
+
+            # Crop and encode tile at full resolution
+            tile_img = img_cv[y0:y1, x0:x1]
+            _, buf = cv2.imencode(".jpg", tile_img, [cv2.IMWRITE_JPEG_QUALITY, 95])
+            tile_b64 = base64.b64encode(buf).decode()
+            tw = x1 - x0
+            th = y1 - y0
+
+            # Convert global rx/ry to tile-local coordinates
+            candidate_list = "\n".join(
+                f"{i}: rx={((r['rx']*w - x0)/tw):.3f}, ry={((r['ry']*h - y0)/th):.3f}"
+                for i, r in tile_gws
+            )
+
+            prompt = f"""You are analyzing a section of a hospital floor plan image.
+I have placed markers at these coordinates within THIS tile image (rx/ry 0.0-1.0 of tile):
+{candidate_list}
+
+For each marker, look at that exact position and read the room name or number.
+Most rooms have text printed inside them — room numbers, names like "Patient Room", "Office", etc.
+
+Return ONLY a JSON array:
+[{{"index": INDEX, "room": "room name or number or null"}}]
+Use the original index numbers shown above."""
+
+            try:
+                resp = client.messages.create(
+                    model="claude-opus-4-20250514",
+                    max_tokens=2000,
+                    temperature=0,
+                    messages=[{"role": "user", "content": [
+                        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": tile_b64}},
+                        {"type": "text", "text": prompt}
+                    ]}]
+                )
+                raw = resp.content[0].text
+                print(f"DEBUG tile({row},{col}) response: {raw[:200]}", file=sys.stderr)
+                s, e = raw.find("["), raw.rfind("]")
+                if s < 0 or e < 0:
+                    continue
+                room_data = json.loads(raw[s:e+1])
+                for entry in room_data:
+                    idx = entry.get("index")
+                    room = entry.get("room")
+                    if idx is not None and idx < len(labeled) and room:
+                        labeled[idx]["label"] = room
+            except Exception as ex:
+                print(f"DEBUG tile error: {ex}", file=sys.stderr)
+                continue
+
+    # Add GW number suffix for duplicate room names
+    label_counts = {}
+    for r in labeled:
+        lbl = r.get("label", "")
+        if not lbl.startswith("GW-"):
+            label_counts[lbl] = label_counts.get(lbl, 0) + 1
+    label_seen = {}
+    for r in labeled:
+        lbl = r.get("label", "")
+        if not lbl.startswith("GW-"):
+            label_seen[lbl] = label_seen.get(lbl, 0) + 1
+            n = label_seen[lbl]
+            if label_counts[lbl] > 1:
+                r["label"] = f"{lbl} GW-{n}"
+            else:
+                r["label"] = f"{lbl} GW-1"
+
+    print(f"DEBUG tiled labels sample: {[r.get('label') for r in labeled[:5]]}", file=sys.stderr)
+    return labeled
