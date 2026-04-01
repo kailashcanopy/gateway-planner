@@ -359,8 +359,10 @@ Return ONLY a valid JSON array, one entry per coordinate, same order:
 
         return labeled
 
-    except Exception as ex:
+   except Exception as ex:
+        import traceback
         print(f"DEBUG label_gateways error: {ex}", file=sys.stderr)
+        print(f"DEBUG traceback: {traceback.format_exc()}", file=sys.stderr)
         return selected
 
 
