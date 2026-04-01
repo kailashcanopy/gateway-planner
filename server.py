@@ -281,20 +281,6 @@ def select_gateways(rooms: list[dict]) -> list[dict]:
 # filtering that pixel-level CV can't reliably do on its own.
 
 def label_gateways_with_claude(selected: list[dict], overview_b64: str, api_key: str) -> list[dict]:
-    """
-    Uses Claude vision to identify room names/numbers for each gateway position
-    and assigns meaningful labels.
-
-    Naming conventions:
-    - Patient Room 305  → PR 305 GW-1, PR 305 GW-2 (if multiple in same room)
-    - Lobby             → Lobby GW-1
-    - Nurse Station     → NS GW-1
-    - Conference Room   → Conf GW-1
-    - Office 210        → Office 210 GW-1
-    - Unknown/unlabeled → GW-01 (fallback)
-
-    Returns selected list with updated 'label' fields.
-    """
     client = anthropic.Anthropic(api_key=api_key)
 
     candidate_list = "\n".join(
@@ -302,32 +288,28 @@ def label_gateways_with_claude(selected: list[dict], overview_b64: str, api_key:
         for i, r in enumerate(selected)
     )
 
-    prompt = f"""You are analyzing a hospital/clinic floor plan image.
-I have placed BLE gateways at the following normalized coordinates (rx/ry = 0.0-1.0 fractions of image width/height):
+    prompt = f"""You are analyzing a floor plan image. I have placed markers at specific coordinates on this floor plan.
 
+For each coordinate below, look at that exact location on the floor plan image and tell me:
+1. What is the room name or number printed on or near that location?
+2. What type of room is it?
+
+Coordinates (rx = left-to-right 0.0-1.0, ry = top-to-bottom 0.0-1.0):
 {candidate_list}
 
-For each gateway position, identify what room or space it falls inside based on the floor plan labels visible in the image.
+Rules for naming:
+- If you see "Patient Room 305" or "PR 305" → use "PR 305"
+- If you see "Nurse Station" or "NS" → use "NS"  
+- If you see "Office 210" → use "Office 210"
+- If you see a room number like "2210" → use that number
+- If you see "Corridor" or "Hallway" → use "Corridor"
+- If you see "Conference" → use "Conf"
+- If you cannot read any label at that location → use the room type if visible, otherwise use null
 
-Naming rules:
-- Patient Room / Patient Rm / PR + number → "PR [number]"
-- Nurse Station / Nursing Station → "NS"
-- Conference Room / Conf Rm → "Conf"
-- Lobby / Reception / Waiting → use the exact name
-- Office + number → "Office [number]"
-- Corridor / Hallway → "Corridor" (should be rare)
-- If you can read a room number, include it
-- If multiple gateways fall in the same room, append GW-1, GW-2, etc.
-- If you cannot identify the room, use null
+IMPORTANT: Look carefully at the image. Most rooms have text labels printed inside them.
 
-Return ONLY a JSON array with one entry per gateway, in the same order:
-[
-  {{"index": 0, "room": "PR 305"}},
-  {{"index": 1, "room": "NS"}},
-  {{"index": 2, "room": null}},
-  ...
-]
-No explanation, no markdown, just the JSON array."""
+Return ONLY a valid JSON array, one entry per coordinate, same order:
+[{{"index": 0, "room": "PR 305"}}, {{"index": 1, "room": "NS"}}, {{"index": 2, "room": null}}]"""
 
     try:
         resp = client.messages.create(
@@ -343,23 +325,24 @@ No explanation, no markdown, just the JSON array."""
             }]
         )
         raw = resp.content[0].text
+        print(f"DEBUG Claude raw response (first 500): {raw[:500]}", file=sys.stderr)
+
         s, e = raw.find("["), raw.rfind("]")
         if s < 0 or e < 0:
             return selected
 
         room_data = json.loads(raw[s:e+1])
 
-        # Build room → count map to handle multiple gateways per room
+        # Count how many times each room name appears
         room_counts = {}
-        room_index  = {}
         for entry in room_data:
             room = entry.get("room")
             if room:
                 room_counts[room] = room_counts.get(room, 0) + 1
 
-        # Assign labels
+        # Assign labels — track per-room gateway counter
         room_seen = {}
-        labeled = list(selected)
+        labeled = [dict(r) for r in selected]  # copy to avoid mutation
         for entry in room_data:
             idx  = entry.get("index")
             room = entry.get("room")
@@ -372,12 +355,13 @@ No explanation, no markdown, just the JSON array."""
                     labeled[idx]["label"] = f"{room} GW-{gw_num}"
                 else:
                     labeled[idx]["label"] = f"{room} GW-1"
-            # If room is null, keep the fallback GW-XX label already assigned
+            # null room → keep existing GW-XX fallback label
 
         return labeled
 
-    except Exception:
-        return selected  # fallback: keep numeric labels
+    except Exception as ex:
+        print(f"DEBUG label_gateways error: {ex}", file=sys.stderr)
+        return selected
 
 
 # ── Flask Routes ──────────────────────────────────────────
@@ -443,11 +427,8 @@ def detect():
             small  = cv2.resize(img_cv, (int(w * sc), int(h * sc)))
             _, buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 90])
             overview_b64 = base64.b64encode(buf).decode()
-           # Label gateways by room name (also filters invalid placements)
-            import sys
-            print(f"DEBUG: Calling labeling with {len(selected)} gateways", file=sys.stderr)
+            # Label gateways by room name (also filters invalid placements)
             selected = label_gateways_with_claude(selected, overview_b64, api_key)
-            print(f"DEBUG: First 5 labels after: {[r.get('label') for r in selected[:5]]}", file=sys.stderr)
 
         pins = [
             {
@@ -538,54 +519,6 @@ def debug():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/test-labels", methods=["POST"])
-def test_labels():
-    """Debug: returns raw Claude response for room labeling"""
-    try:
-        img_bytes = request.files["image"].read()
-        api_key = request.form.get("api_key", ANTHROPIC_API_KEY)
-        
-        rooms = detect_rooms(img_bytes)
-        selected = select_gateways(rooms)
-        for i, r in enumerate(selected):
-            r["label"] = f"GW-{str(i+1).zfill(2)}"
-
-        arr = np.frombuffer(img_bytes, np.uint8)
-        img_cv = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        h, w = img_cv.shape[:2]
-        sc = min(1.0, 1200/max(w,h))
-        small = cv2.resize(img_cv, (int(w*sc), int(h*sc)))
-        _, buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 90])
-        overview_b64 = base64.b64encode(buf).decode()
-
-        client = anthropic.Anthropic(api_key=api_key)
-        candidate_list = "\n".join(
-            f"{i}: rx={r['rx']:.3f}, ry={r['ry']:.3f}"
-            for i, r in enumerate(selected[:20])  # first 20 only for test
-        )
-        prompt = f"""Look at this floor plan. For each coordinate, tell me what room it's in.
-{candidate_list}
-Return JSON array: [{{"index":0,"room":"room name or null"}}]"""
-
-        resp = client.messages.create(
-            model="claude-opus-4-20250514",
-            max_tokens=2000,
-            temperature=0,
-            messages=[{"role":"user","content":[
-                {"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":overview_b64}},
-                {"type":"text","text":prompt}
-            ]}]
-        )
-        
-        return jsonify({
-            "rooms_detected": len(rooms),
-            "gateways_selected": len(selected),
-            "claude_raw": resp.content[0].text,
-            "image_size": f"{w}x{h}",
-            "scaled_to": f"{int(w*sc)}x{int(h*sc)}"
-        })
-    except Exception as e:
-        return jsonify({"error": str(e), "type": type(e).__name__}), 500
 
 # ── Entry point ───────────────────────────────────────────
 
