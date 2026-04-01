@@ -193,9 +193,9 @@ def detect():
             arr = np.frombuffer(img_bytes, np.uint8)
             img_cv = cv2.imdecode(arr, cv2.IMREAD_COLOR)
             h, w = img_cv.shape[:2]
-            sc = min(1.0, 1200/max(w,h))
+            sc = min(1.0, 2000/max(w,h))
             small = cv2.resize(img_cv, (int(w*sc), int(h*sc)))
-            _, buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 90])
+            _, buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 95])
             overview_b64 = base64.b64encode(buf).decode()
             print(f"DEBUG calling label_gateways_with_claude", file=sys.stderr)
             selected = label_gateways_with_claude(selected, overview_b64, api_key)
