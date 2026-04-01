@@ -2,7 +2,6 @@ import cv2
 import numpy as np
 from flask import Flask, request, jsonify, Response, send_file
 from flask_cors import CORS
-import anthropic
 import base64
 import json
 import os
@@ -12,8 +11,6 @@ import traceback
 app = Flask(__name__)
 CORS(app)
 
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-
 
 def detect_rooms(img_bytes):
     arr = np.frombuffer(img_bytes, np.uint8)
@@ -22,10 +19,7 @@ def detect_rooms(img_bytes):
         raise ValueError("Could not decode image")
     h, w = img.shape[:2]
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    binary = cv2.adaptiveThreshold(
-        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV, blockSize=11, C=3
-    )
+    binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, blockSize=11, C=3)
     kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
     closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel_close, iterations=3)
     kernel_dilate = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
@@ -136,37 +130,16 @@ def detect():
     try:
         if "image" not in request.files:
             return jsonify({"error": "No image file provided"}), 400
-
         img_bytes = request.files["image"].read()
-        api_key = request.form.get("api_key", ANTHROPIC_API_KEY)
-        do_validate = request.form.get("validate", "true").lower() == "true"
-
         rooms = detect_rooms(img_bytes)
         if not rooms:
             return jsonify({"error": "No rooms detected.", "pins": []}), 200
-
         selected = select_gateways(rooms)
-
-        # Assign sequential labels
-        for i, r in enumerate(selected):
-            r["label"] = f"GW-{str(i+1).zfill(2)}"
-
         pins = [
-            {
-                "rx": r["rx"],
-                "ry": r["ry"],
-                "label": r.get("label", f"GW-{str(i+1).zfill(2)}"),
-                "status": "green"
-            }
+            {"rx": r["rx"], "ry": r["ry"], "label": f"GW-{str(i+1).zfill(2)}", "status": "green"}
             for i, r in enumerate(selected)
         ]
-
-        return jsonify({
-            "pins": pins,
-            "total_rooms_detected": len(rooms),
-            "selected": len(selected)
-        })
-
+        return jsonify({"pins": pins, "total_rooms_detected": len(rooms), "selected": len(selected)})
     except Exception as e:
         print(f"ERROR: {e}\n{traceback.format_exc()}", file=sys.stderr)
         return jsonify({"error": str(e)}), 500
@@ -180,8 +153,7 @@ def debug():
         img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
         h, w = img.shape[:2]
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                       cv2.THRESH_BINARY_INV, blockSize=11, C=3)
+        binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, blockSize=11, C=3)
         kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
         closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel_close, iterations=3)
         kernel_dilate = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
