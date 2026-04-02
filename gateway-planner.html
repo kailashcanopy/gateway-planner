@@ -148,8 +148,36 @@ button:not(:disabled):active{background:#f0f0f0}
   <div id="modal-box">
     <h3>Edit Gateway</h3>
     <input type="text" id="m-label" placeholder="Label (e.g. GW-14, Room 204)" maxlength="20">
-    <div class="modal-statuses">
-      <div class="ms-btn ms-green"  data-s="green"  onclick="selectMS(this)">● Active</div>
+    <div style="margin-bottom:12px">
+      <label style="display:block;font-size:12px;color:#666;margin-bottom:5px;font-weight:500">Room Context</label>
+      <select id="m-room-context" style="width:100%;border:1px solid #ccc;border-radius:8px;padding:9px 11px;font-size:13px;background:#fff">
+        <option value="">— Select room type —</option>
+        <option>Patient Room</option><option>Clean Supply Rooms</option>
+        <option>Soiled Utility Rooms</option><option>Hallway / Corridor</option>
+        <option>Nurses Station</option><option>Medication Room</option>
+        <option>ICU</option><option>NICU</option><option>ED</option>
+        <option>Isolation Rooms</option><option>Trauma Bay</option>
+        <option>Triage Room</option><option>Operating Room</option>
+        <option>PACU</option><option>Endoscopy</option><option>Cath Lab</option>
+        <option>Laboratory</option><option>Urgent Care</option>
+        <option>Sterile Processing</option><option>Staff Break Room</option>
+        <option>Charting / Work Rooms</option><option>Conference Rooms</option>
+        <option>Security / Dispatch / Command Center (SOC/EOC)</option>
+        <option>Loading Dock / Receiving</option>
+        <option>IT / Network Closets (IDF/MDF)</option>
+        <option>Mechanical / Electrical Rooms</option>
+        <option>Entry / Lobby / Reception</option><option>Ambulance Bay</option>
+        <option>Pharmacy</option><option>Infusion Center</option>
+        <option>Dialysis Unit</option><option>Office / Admin Area</option>
+        <option>Storage Room</option><option>Supply Closet</option>
+        <option>Behavioral Health Unit</option><option>Pediatric Unit</option>
+        <option>Oncology Unit</option><option>Physical Therapy</option>
+        <option>Labor &amp; Delivery</option><option>Burn Unit</option>
+        <option>Stairwell</option><option>Elevator Lobby</option>
+        <option>Exterior / Parking Garage</option>
+        <option>MRI</option><option>CT</option><option>X-Ray</option><option>Ultrasound</option>
+      </select>
+    </div>
       <div class="ms-btn ms-red"    data-s="red"    onclick="selectMS(this)">● Disconnected</div>
       <div class="ms-btn ms-dark"   data-s="dark"   onclick="selectMS(this)">● Standby</div>
       <div class="ms-btn ms-orange" data-s="orange" onclick="selectMS(this)">⚠ Warning</div>
@@ -520,6 +548,7 @@ function openModal(idx){
   editIdx=idx; const p=pins[idx];
   document.getElementById('m-label').value=p.label||'';
   var rc=document.getElementById('m-room-context');if(rc)rc.value=p.roomContext||'';
+  var rc=document.getElementById('m-room-context');if(rc)rc.value=p.roomContext||'';
   document.querySelectorAll('.ms-btn').forEach(b=>{
     b.classList.remove('sel'); if(b.dataset.s===p.status) b.classList.add('sel');
   });
@@ -530,6 +559,7 @@ function selectMS(el){ document.querySelectorAll('.ms-btn').forEach(b=>b.classLi
 function savePin(){
   if(editIdx<0) return;
   pins[editIdx].label=document.getElementById('m-label').value.trim();
+  var rc=document.getElementById('m-room-context');if(rc)pins[editIdx].roomContext=rc.value;
   var rc=document.getElementById('m-room-context');if(rc)pins[editIdx].roomContext=rc.value;
   const sel=document.querySelector('.ms-btn.sel');
   if(sel) pins[editIdx].status=sel.dataset.s;
