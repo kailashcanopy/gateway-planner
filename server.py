@@ -1,198 +1,679 @@
-import cv2
-import numpy as np
-from flask import Flask, request, jsonify, Response, send_file
-from flask_cors import CORS
-import base64
-import json
-import os
-import sys
-import traceback
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Gateway Planner</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;height:100vh;display:flex;flex-direction:column;overflow:hidden;user-select:none}
+#toolbar{background:#fff;border-bottom:1px solid #e0e0e0;padding:10px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;z-index:100;flex-shrink:0}
+#toolbar h1{font-size:15px;font-weight:600;color:#1a1a1a;margin-right:4px;white-space:nowrap}
+.tb-group{display:flex;align-items:center;gap:6px}
+.tb-sep{width:1px;height:28px;background:#e0e0e0;flex-shrink:0}
+button{border:1px solid #d0d0d0;background:#fff;border-radius:8px;padding:7px 13px;font-size:13px;cursor:pointer;color:#333;display:flex;align-items:center;gap:5px;font-weight:500;transition:background .15s;white-space:nowrap}
+button:disabled{opacity:.4;cursor:not-allowed}
+button:not(:disabled):active{background:#f0f0f0}
+.status-btn{border-radius:20px;padding:6px 12px;font-size:12px;font-weight:600}
+.status-btn.green{background:#e8f5e9;color:#2e7d32;border-color:#a5d6a7}
+.status-btn.red{background:#ffebee;color:#c62828;border-color:#ef9a9a}
+.status-btn.dark{background:#eceff1;color:#37474f;border-color:#b0bec5}
+.status-btn.orange{background:#fff3e0;color:#e65100;border-color:#ffcc80}
+.status-btn.active-sel{outline:3px solid #1976d2;outline-offset:1px}
+.mode-btn{border-radius:8px;padding:7px 13px;font-size:13px;font-weight:600}
+.mode-btn.active{background:#1a1a2e;color:#fff;border-color:#1a1a2e}
+#ai-btn{background:#5c35b5;color:#fff;border:none;font-weight:600;font-size:13px;padding:8px 16px;border-radius:10px}
+#ai-btn:not(:disabled):active{opacity:.85}
+#upload-btn{background:#f0f7ff;color:#1565c0;border-color:#90caf9}
+#clear-btn{background:#fff8e1;color:#f57f17;border-color:#ffe082}
+#settings-btn{background:#f1f1f1;color:#555;border-color:#ccc;font-size:12px}
+#canvas-wrap{flex:1;overflow:hidden;position:relative;background:#e8eaed}
+#fp-canvas{position:absolute;top:0;left:0;touch-action:none}
+#zoom-bar{position:absolute;bottom:16px;right:16px;display:flex;gap:6px;z-index:50}
+#zoom-bar button{width:36px;height:36px;padding:0;justify-content:center;font-size:18px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.15)}
+#info-bar{position:absolute;bottom:16px;left:16px;background:rgba(255,255,255,.92);border-radius:10px;padding:7px 12px;font-size:12px;color:#555;border:1px solid #ddd;pointer-events:none;max-width:60vw}
+#move-banner{display:none;position:absolute;top:12px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;border-radius:10px;padding:8px 18px;font-size:13px;font-weight:600;z-index:50;pointer-events:none;white-space:nowrap}
+#pdf-controls{display:none;position:absolute;top:12px;left:50%;transform:translateX(-50%);background:#fff;border:1px solid #ddd;border-radius:10px;padding:6px 12px;align-items:center;gap:10px;z-index:40;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+#pdf-controls button{width:28px;height:28px;padding:0;justify-content:center;font-size:16px}
+#drop-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+#drop-overlay.hidden{display:none}
+.drop-icon{width:64px;height:64px;background:#fff;border-radius:16px;border:2px dashed #90caf9;display:flex;align-items:center;justify-content:center}
+#drop-overlay p{color:#888;font-size:14px;text-align:center;line-height:1.6}
+#drop-overlay label{background:#1565c0;color:#fff;padding:10px 22px;border-radius:10px;cursor:pointer;font-size:14px;font-weight:600}
+#drop-overlay input{display:none}
+#modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200;align-items:center;justify-content:center}
+#modal.open{display:flex}
+#modal-box{background:#fff;border-radius:14px;padding:22px;width:300px;box-shadow:0 8px 32px rgba(0,0,0,.2)}
+#modal-box h3{font-size:15px;margin-bottom:14px;color:#1a1a1a}
+#modal-box input[type=text]{width:100%;border:1px solid #ccc;border-radius:8px;padding:9px 11px;font-size:14px;margin-bottom:12px}
+.modal-actions{display:flex;gap:8px;flex-wrap:wrap}
+.modal-actions button{flex:1;min-width:60px;padding:10px;border-radius:10px;font-size:13px;font-weight:600}
+#m-save{background:#1a7a4a;color:#fff;border-color:#1a7a4a}
+#m-move{background:#e8f0fe;color:#1565c0;border-color:#90caf9}
+#m-delete{background:#ffebee;color:#c62828;border-color:#ef9a9a}
+#m-cancel{background:#f5f5f5;color:#555;border-color:#ddd}
+#settings-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:300;align-items:center;justify-content:center}
+#settings-modal.open{display:flex}
+#settings-box{background:#fff;border-radius:14px;padding:24px;width:360px;box-shadow:0 8px 32px rgba(0,0,0,.25)}
+#settings-box h3{font-size:15px;font-weight:600;margin-bottom:16px}
+.setting-row{margin-bottom:14px}
+.setting-row label{display:block;font-size:12px;color:#666;margin-bottom:5px;font-weight:500}
+.setting-row input,.setting-row select{width:100%;border:1px solid #ccc;border-radius:8px;padding:9px 11px;font-size:13px}
+.setting-note{font-size:11px;color:#999;margin-top:4px;line-height:1.4}
+.settings-actions{display:flex;gap:8px;margin-top:16px}
+.settings-actions button{flex:1;padding:10px;border-radius:10px;font-size:13px;font-weight:600}
+#s-save{background:#1a7a4a;color:#fff;border-color:#1a7a4a}
+#s-cancel{background:#f5f5f5;color:#555;border-color:#ddd}
+#ai-overlay{display:none;position:absolute;inset:0;background:rgba(255,255,255,.88);z-index:150;flex-direction:column;align-items:center;justify-content:center;gap:16px}
+#ai-overlay.show{display:flex}
+.ai-spinner{width:48px;height:48px;border:4px solid #e0e0e0;border-top-color:#5c35b5;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#ai-overlay p{font-size:14px;color:#444;font-weight:500;text-align:center;max-width:300px}
+#ai-overlay small{font-size:12px;color:#999;text-align:center;max-width:280px;line-height:1.5}
+#pin-count{font-size:11px;color:#999;white-space:nowrap;margin-left:auto}
+#export-menu{display:none;position:fixed;background:#fff;border:1px solid #ddd;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.15);z-index:500;padding:6px;min-width:150px}
+.exp-item{padding:9px 14px;cursor:pointer;border-radius:7px;font-size:13px;font-weight:500;color:#333}
+.exp-item:hover{background:#f5f5f5}
+</style>
+</head>
+<body>
 
-app = Flask(__name__)
-CORS(app)
+<div id="toolbar">
+  <h1>&#128225; Gateway Planner</h1>
+  <div class="tb-sep"></div>
+  <button id="upload-btn" onclick="triggerUpload()">&#11014; Load Floor Plan</button>
+  <button id="ai-btn" onclick="runAI()" disabled>&#10022; Auto-Place Gateways</button>
+  <div class="tb-sep"></div>
+  <div class="tb-group">
+    <span style="font-size:12px;color:#888">Mode:</span>
+    <button class="mode-btn active" id="mode-pan" onclick="setMode('pan')">&#9995; Pan</button>
+    <button class="mode-btn" id="mode-add" onclick="setMode('add')">&#65291; Add Pin</button>
+  </div>
+  <div class="tb-sep"></div>
+  <div class="tb-group">
+    <span style="font-size:12px;color:#888">Status:</span>
+    <button class="status-btn green active-sel" onclick="setStatus('green',this)">&#9679; Active</button>
+    <button class="status-btn red" onclick="setStatus('red',this)">&#9679; Disconnected</button>
+    <button class="status-btn dark" onclick="setStatus('dark',this)">&#9679; Standby</button>
+    <button class="status-btn orange" onclick="setStatus('orange',this)">&#9888; Warning</button>
+  </div>
+  <div class="tb-sep"></div>
+  <button onclick="showExportMenu(event)">&#11015; Export</button>
+  <button id="clear-btn" onclick="clearPins()">&#10005; Clear Pins</button>
+  <button id="settings-btn" onclick="openSettings()">&#9881; Settings</button>
+  <span id="pin-count">0 gateways</span>
+</div>
 
+<div id="export-menu">
+  <div class="exp-item" onclick="exportPNG();hideExportMenu()">&#11015; Export PNG</div>
+  <div class="exp-item" onclick="exportPDF();hideExportMenu()">&#11015; Export PDF</div>
+</div>
 
-def detect_rooms(img_bytes):
-    arr = np.frombuffer(img_bytes, np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-    if img is None:
-        raise ValueError("Could not decode image")
-    h, w = img.shape[:2]
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, blockSize=11, C=3)
-    kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel_close, iterations=3)
-    kernel_dilate = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-    walls = cv2.dilate(closed, kernel_dilate, iterations=1)
-    floor = cv2.bitwise_not(walls)
-    flood_mask = np.zeros((h + 2, w + 2), np.uint8)
-    floor_copy = floor.copy()
-    for pt in [(0,0),(w-1,0),(0,h-1),(w-1,h-1),(w//2,0),(w//2,h-1),(0,h//2),(w-1,h//2)]:
-        if floor_copy[pt[1], pt[0]] == 255:
-            cv2.floodFill(floor_copy, flood_mask, pt, 0)
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(floor_copy, connectivity=4)
-    total_px = h * w
-    rooms = []
-    for i in range(1, num_labels):
-        area = stats[i, cv2.CC_STAT_AREA]
-        rw = stats[i, cv2.CC_STAT_WIDTH]
-        rh = stats[i, cv2.CC_STAT_HEIGHT]
-        cx, cy = centroids[i]
-        if area < total_px * 0.00006 or area > total_px * 0.08:
-            continue
-        aspect = max(rw, rh) / max(min(rw, rh), 1)
-        if aspect > 6:
-            continue
-        rooms.append({"rx": float(cx/w), "ry": float(cy/h), "area": int(area), "aspect": float(aspect)})
-    return rooms
+<div id="canvas-wrap">
+  <canvas id="fp-canvas"></canvas>
+  <div id="move-banner">&#128205; Click anywhere to place <span id="move-label"></span> &middot; ESC to cancel</div>
+  <div id="drop-overlay">
+    <div class="drop-icon">
+      <svg viewBox="0 0 24 24" width="32" height="32" fill="#90caf9"><path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-5 14l-4-4 1.4-1.4 1.6 1.6V9h2v4.2l1.6-1.6L17 13l-3 4z"/></svg>
+    </div>
+    <p>Drop a floor plan image or PDF here<br>or tap below to upload</p>
+    <label>Choose Floor Plan<input type="file" accept="image/*,.pdf" onchange="loadFile(event)"></label>
+  </div>
+  <div id="pdf-controls">
+    <button onclick="changePage(-1)">&#8249;</button>
+    <span id="page-label" style="font-size:13px;color:#555;white-space:nowrap">Page 1 / 1</span>
+    <button onclick="changePage(1)">&#8250;</button>
+  </div>
+  <div id="zoom-bar">
+    <button onclick="zoom(1.2)">+</button>
+    <button onclick="zoom(0.83)">&minus;</button>
+    <button onclick="resetView()" style="font-size:12px;width:auto;padding:0 10px">Fit</button>
+  </div>
+  <div id="info-bar">Load a floor plan to get started</div>
+  <div id="ai-overlay">
+    <div class="ai-spinner"></div>
+    <p id="ai-status-msg">Detecting rooms...</p>
+    <small id="ai-status-sub">OpenCV wall detection + room segmentation</small>
+  </div>
+</div>
 
+<div id="modal">
+  <div id="modal-box">
+    <h3>Edit Gateway</h3>
+    <input type="text" id="m-label" placeholder="Label (e.g. GW-14, Room 204)" maxlength="20">
+    <div style="margin-bottom:12px">
+      <label style="display:block;font-size:12px;color:#666;margin-bottom:5px;font-weight:500">Room Context</label>
+      <select id="m-room-context" style="width:100%;border:1px solid #ccc;border-radius:8px;padding:9px 11px;font-size:13px;background:#fff">
+        <option value="">— Select room type —</option>
+        <option>Patient Room</option>
+        <option>Clean Supply Rooms</option>
+        <option>Soiled Utility Rooms</option>
+        <option>Hallway / Corridor</option>
+        <option>Nurses Station</option>
+        <option>Medication Room</option>
+        <option>ICU</option>
+        <option>NICU</option>
+        <option>ED</option>
+        <option>Isolation Rooms</option>
+        <option>Trauma Bay</option>
+        <option>Triage Room</option>
+        <option>Operating Room</option>
+        <option>PACU</option>
+        <option>Endoscopy</option>
+        <option>Cath Lab</option>
+        <option>Laboratory</option>
+        <option>Urgent Care</option>
+        <option>Sterile Processing</option>
+        <option>Staff Break Room</option>
+        <option>Charting / Work Rooms</option>
+        <option>Conference Rooms</option>
+        <option>Security / Dispatch / Command Center (SOC/EOC)</option>
+        <option>Loading Dock / Receiving</option>
+        <option>IT / Network Closets (IDF/MDF)</option>
+        <option>Mechanical / Electrical Rooms</option>
+        <option>Entry / Lobby / Reception</option>
+        <option>Ambulance Bay</option>
+        <option>Pharmacy</option>
+        <option>Infusion Center</option>
+        <option>Dialysis Unit</option>
+        <option>Office / Admin Area</option>
+        <option>Storage Room</option>
+        <option>Supply Closet</option>
+        <option>Behavioral Health Unit</option>
+        <option>Pediatric Unit</option>
+        <option>Oncology Unit</option>
+        <option>Physical Therapy</option>
+        <option>Labor &amp; Delivery</option>
+        <option>Burn Unit</option>
+        <option>Stairwell</option>
+        <option>Elevator Lobby</option>
+        <option>Exterior / Parking Garage</option>
+        <option>MRI</option>
+        <option>CT</option>
+        <option>X-Ray</option>
+        <option>Ultrasound</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button id="m-save" onclick="savePin()">Save</button>
+      <button id="m-move" onclick="startMovePin()">&#8678; Move</button>
+      <button id="m-delete" onclick="deletePin()">Delete</button>
+      <button id="m-cancel" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
 
-def classify_facility(rooms):
-    if len(rooms) > 80:
-        return 'hospital'
-    areas = sorted([r["area"] for r in rooms])
-    median = areas[len(areas) // 2] if areas else 0
-    return 'mob' if median > 3000 else 'hospital'
+<div id="settings-modal">
+  <div id="settings-box">
+    <h3>&#9881; Settings</h3>
+    <div class="setting-row">
+      <label>Backend URL</label>
+      <input type="text" id="s-url" placeholder="https://gateway-planner.onrender.com">
+      <div class="setting-note">URL where server.py is running.</div>
+    </div>
+    <div class="setting-row">
+      <label>Anthropic API Key (for Claude validation)</label>
+      <input type="password" id="s-key" placeholder="sk-ant-... (optional)">
+    </div>
+    <div class="setting-row">
+      <label>Claude validation</label>
+      <select id="s-validate">
+        <option value="true">Enabled</option>
+        <option value="false">Disabled (CV only, faster)</option>
+      </select>
+    </div>
+    <div class="settings-actions">
+      <button id="s-save" onclick="saveSettings()">Save</button>
+      <button id="s-cancel" onclick="closeSettings()">Cancel</button>
+    </div>
+  </div>
+</div>
 
+<input type="file" id="file-input" accept="image/*,.pdf" style="display:none" onchange="loadFile(event)">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-def select_gateways(rooms):
-    if not rooms:
-        return []
-    facility = classify_facility(rooms)
-    areas = sorted([r["area"] for r in rooms])
-    n = len(areas)
-    p25_area = areas[max(0, int(n * 0.25))]
-    p75_area = areas[min(n-1, int(n * 0.75))]
-    valid = []
-    for r in rooms:
-        if r["aspect"] > 3.5:
-            continue
-        if r["area"] < p25_area * 0.5:
-            continue
-        if r["area"] > p75_area * 5.0:
-            continue
-        valid.append(r)
-    if not valid:
-        valid = rooms
-    all_rx = [r["rx"] for r in valid]
-    all_ry = [r["ry"] for r in valid]
-    rx_min, rx_max = min(all_rx), max(all_rx)
-    ry_min, ry_max = min(all_ry), max(all_ry)
-    rx_span = (rx_max - rx_min) or 1
-    ry_span = (ry_max - ry_min) or 1
-    PERIM_BAND = 0.15
-    perimeter, interior = [], []
-    for r in valid:
-        on_perim = (
-            r["rx"] < rx_min + rx_span * PERIM_BAND or
-            r["rx"] > rx_max - rx_span * PERIM_BAND or
-            r["ry"] < ry_min + ry_span * PERIM_BAND or
-            r["ry"] > ry_max - ry_span * PERIM_BAND
-        )
-        (perimeter if on_perim else interior).append(r)
-    ROW_H = 0.04
-    def sort_key(r):
-        row = int(r["ry"] / ROW_H)
-        return (row, r["rx"] if row % 2 == 0 else -r["rx"])
-    perimeter = sorted(perimeter, key=sort_key)
-    interior = sorted(interior, key=sort_key)
-    stride = 1 if facility == 'hospital' else 2
-    selected = list(perimeter)
-    for i, r in enumerate(interior):
-        if i % stride == 0:
-            selected.append(r)
-    MIN_DEDUP = 0.022
-    deduped = []
-    for r in selected:
-        if not any(((r["rx"]-s["rx"])**2+(r["ry"]-s["ry"])**2)**0.5 < MIN_DEDUP for s in deduped):
-            deduped.append(r)
-    COVERAGE_DIST = 0.055
-    for r in valid:
-        nearest = min((((r["rx"]-s["rx"])**2+(r["ry"]-s["ry"])**2)**0.5 for s in deduped), default=999)
-        if nearest > COVERAGE_DIST:
-            deduped.append(r)
-    deduped.sort(key=lambda r: (int(r["ry"] / ROW_H), r["rx"]))
-    return deduped
+const canvas=document.getElementById('fp-canvas');
+const ctx=canvas.getContext('2d');
+const wrap=document.getElementById('canvas-wrap');
 
+let img=null,imgBlob=null,pins=[],scale=1,offX=0,offY=0;
+let curStatus='green',editIdx=-1,pinIdCounter=0;
+let pdfDoc=null,pdfPage=1,pdfTotal=1;
+let mode='pan';
+let isDragging=false,lastTX=0,lastTY=0,didDrag=false;
+let movingPinIdx=-1;
 
-@app.route("/", methods=["GET"])
-def index():
-    return send_file(os.path.join(os.path.dirname(os.path.abspath(__file__)), "gateway-planner.html"))
+const COLORS={green:'#2e7d32',red:'#c62828',dark:'#455a64',orange:'#e65100'};
+const FILLS={green:'#66bb6a',red:'#ef5350',dark:'#78909c',orange:'#ffa726'};
 
+// ── Settings ──────────────────────────────────────────────
+function getSettings(){
+  return{
+    url:localStorage.getItem('gw_backend_url')||window.location.origin,
+    key:localStorage.getItem('gw_api_key')||'',
+    validate:localStorage.getItem('gw_validate')!=='false'
+  };
+}
+function openSettings(){
+  const s=getSettings();
+  document.getElementById('s-url').value=s.url;
+  document.getElementById('s-key').value=s.key;
+  document.getElementById('s-validate').value=s.validate?'true':'false';
+  document.getElementById('settings-modal').classList.add('open');
+}
+function saveSettings(){
+  localStorage.setItem('gw_backend_url',document.getElementById('s-url').value.trim()||window.location.origin);
+  localStorage.setItem('gw_api_key',document.getElementById('s-key').value.trim());
+  localStorage.setItem('gw_validate',document.getElementById('s-validate').value);
+  closeSettings();
+}
+function closeSettings(){document.getElementById('settings-modal').classList.remove('open')}
 
-@app.route("/health", methods=["GET"])
-def health():
-    return jsonify({"status": "ok", "opencv": cv2.__version__})
+// ── Mode ──────────────────────────────────────────────────
+function setMode(m){
+  mode=m;
+  ['pan','add'].forEach(n=>document.getElementById('mode-'+n).classList.toggle('active',n===m));
+  canvas.style.cursor=m==='add'?'crosshair':'grab';
+  document.getElementById('info-bar').textContent=
+    m==='add'?'Click anywhere on the floor plan to place a new gateway':'Click a pin to edit · Drag to pan · Scroll to zoom';
+}
 
+// ── Move pin ──────────────────────────────────────────────
+function startMovePin(){
+  if(editIdx<0)return;
+  movingPinIdx=editIdx;
+  closeModal();
+  canvas.style.cursor='crosshair';
+  const lbl=pins[movingPinIdx].label||('GW-'+String(movingPinIdx+1).padStart(2,'0'));
+  document.getElementById('move-label').textContent=lbl;
+  document.getElementById('move-banner').style.display='block';
+  document.getElementById('info-bar').textContent='Click anywhere to place '+lbl+' \u00b7 ESC to cancel';
+}
+function cancelMove(){
+  movingPinIdx=-1;
+  document.getElementById('move-banner').style.display='none';
+  canvas.style.cursor=mode==='add'?'crosshair':'grab';
+  document.getElementById('info-bar').textContent=
+    mode==='add'?'Click anywhere on the floor plan to place a new gateway':'Click a pin to edit \u00b7 Drag to pan \u00b7 Scroll to zoom';
+}
+document.addEventListener('keydown',function(e){if(e.key==='Escape'&&movingPinIdx>=0)cancelMove();});
 
-@app.route("/detect", methods=["POST"])
-def detect():
-    try:
-        if "image" not in request.files:
-            return jsonify({"error": "No image file provided"}), 400
-        img_bytes = request.files["image"].read()
-        rooms = detect_rooms(img_bytes)
-        if not rooms:
-            return jsonify({"error": "No rooms detected.", "pins": []}), 200
-        selected = select_gateways(rooms)
-        pins = [
-            {"rx": r["rx"], "ry": r["ry"], "label": f"GW-{str(i+1).zfill(2)}", "status": "green"}
-            for i, r in enumerate(selected)
-        ]
-        return jsonify({"pins": pins, "total_rooms_detected": len(rooms), "selected": len(selected)})
-    except Exception as e:
-        print(f"ERROR: {e}\n{traceback.format_exc()}", file=sys.stderr)
-        return jsonify({"error": str(e)}), 500
+// ── File loading ──────────────────────────────────────────
+function triggerUpload(){document.getElementById('file-input').click()}
+function loadFile(e){
+  const file=e.target.files[0];if(!file)return;
+  if(file.type==='application/pdf'||file.name.toLowerCase().endsWith('.pdf'))loadPDF(file);
+  else loadImageFile(file);
+  e.target.value='';
+}
+function loadImageFile(file){
+  imgBlob=file;
+  const reader=new FileReader();
+  reader.onload=function(ev){
+    const i=new Image();
+    i.onload=function(){
+      img=i;pdfDoc=null;
+      document.getElementById('pdf-controls').style.display='none';
+      pins=[];resetView();
+      document.getElementById('drop-overlay').classList.add('hidden');
+      document.getElementById('ai-btn').disabled=false;
+      setMode('pan');render();
+    };
+    i.src=ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+async function loadPDF(file){
+  const ab=await file.arrayBuffer();
+  pdfDoc=await pdfjsLib.getDocument({data:ab}).promise;
+  pdfTotal=pdfDoc.numPages;pdfPage=1;pins=[];
+  document.getElementById('pdf-controls').style.display='flex';
+  document.getElementById('drop-overlay').classList.add('hidden');
+  document.getElementById('ai-btn').disabled=false;
+  await renderPDFPage();
+}
+async function renderPDFPage(){
+  const page=await pdfDoc.getPage(pdfPage);
+  const vp=page.getViewport({scale:4});
+  const off=document.createElement('canvas');
+  off.width=vp.width;off.height=vp.height;
+  await page.render({canvasContext:off.getContext('2d'),viewport:vp}).promise;
+  off.toBlob(function(blob){
+    imgBlob=blob;
+    const url=URL.createObjectURL(blob);
+    const i=new Image();
+    i.onload=function(){img=i;resetView();render();};
+    i.src=url;
+  },'image/png');
+  document.getElementById('page-label').textContent='Page '+pdfPage+' / '+pdfTotal;
+  const btns=document.getElementById('pdf-controls').querySelectorAll('button');
+  btns[0].disabled=pdfPage<=1;btns[1].disabled=pdfPage>=pdfTotal;
+}
+async function changePage(d){
+  const np=pdfPage+d;
+  if(np<1||np>pdfTotal)return;
+  pdfPage=np;pins=[];await renderPDFPage();
+}
 
+// ── AI Auto-placement ─────────────────────────────────────
+async function runAI(){
+  if(!img||!imgBlob)return;
+  const s=getSettings();
+  const overlay=document.getElementById('ai-overlay');
+  const msg=document.getElementById('ai-status-msg');
+  const sub=document.getElementById('ai-status-sub');
+  overlay.classList.add('show');
+  msg.textContent='Sending to backend...';
+  sub.textContent='OpenCV wall detection + room segmentation';
+  try{
+    const health=await fetch(s.url+'/health').catch(()=>null);
+    if(!health||!health.ok)throw new Error('Cannot reach backend at '+s.url);
+    const fd=new FormData();
+    fd.append('image',imgBlob,'floorplan.png');
+    fd.append('api_key',s.key);
+    fd.append('validate',s.validate?'true':'false');
+    msg.textContent='Detecting rooms with OpenCV...';
+    const resp=await fetch(s.url+'/detect',{method:'POST',body:fd});
+    const data=await resp.json();
+    if(!resp.ok)throw new Error(data.error||'Backend error '+resp.status);
+    if(data.error)throw new Error(data.error);
+    pins=data.pins.map(function(p,i){return{id:i,rx:p.rx,ry:p.ry,label:p.label,status:p.status||'green'};});
+    pinIdCounter=pins.length;
+    msg.textContent='Done! '+pins.length+' gateways placed.';
+    sub.textContent=data.total_rooms_detected+' rooms detected';
+    setTimeout(function(){overlay.classList.remove('show');},1200);
+    document.getElementById('info-bar').textContent=pins.length+' gateways placed \u00b7 Click a pin to edit or move';
+    render();
+  }catch(err){
+    overlay.classList.remove('show');
+    alert('Auto-placement failed:\n\n'+err.message);
+  }
+}
 
-@app.route("/debug", methods=["POST"])
-def debug():
-    try:
-        img_bytes = request.files["image"].read()
-        arr = np.frombuffer(img_bytes, np.uint8)
-        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        h, w = img.shape[:2]
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, blockSize=11, C=3)
-        kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel_close, iterations=3)
-        kernel_dilate = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-        walls = cv2.dilate(closed, kernel_dilate, iterations=1)
-        floor = cv2.bitwise_not(walls)
-        flood_mask = np.zeros((h+2, w+2), np.uint8)
-        floor_copy = floor.copy()
-        for pt in [(0,0),(w-1,0),(0,h-1),(w-1,h-1),(w//2,0),(w//2,h-1),(0,h//2),(w-1,h//2)]:
-            if floor_copy[pt[1], pt[0]] == 255:
-                cv2.floodFill(floor_copy, flood_mask, pt, 0)
-        num_labels, labels, stats_cv, centroids = cv2.connectedComponentsWithStats(floor_copy, connectivity=4)
-        total_px = h * w
-        viz = img.copy()
-        passed = failed_size = failed_aspect = 0
-        for i in range(1, num_labels):
-            area = stats_cv[i, cv2.CC_STAT_AREA]
-            rw = stats_cv[i, cv2.CC_STAT_WIDTH]
-            rh = stats_cv[i, cv2.CC_STAT_HEIGHT]
-            cx, cy = int(centroids[i][0]), int(centroids[i][1])
-            aspect = max(rw, rh) / max(min(rw, rh), 1)
-            if area < total_px * 0.00006 or area > total_px * 0.08:
-                failed_size += 1
-                cv2.circle(viz, (cx, cy), 4, (0, 0, 255), -1)
-            elif aspect > 6:
-                failed_aspect += 1
-                cv2.circle(viz, (cx, cy), 4, (0, 165, 255), -1)
-            else:
-                passed += 1
-                cv2.circle(viz, (cx, cy), 7, (0, 220, 0), -1)
-        label_text = f"Valid:{passed}  Filtered:{failed_size}  Corridor:{failed_aspect}"
-        cv2.putText(viz, label_text, (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 3)
-        cv2.putText(viz, label_text, (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 1)
-        _, buf = cv2.imencode(".png", viz)
-        return Response(buf.tobytes(), mimetype="image/png")
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+// ── Canvas ────────────────────────────────────────────────
+function resetView(){
+  if(!img)return;
+  const wr=wrap.clientWidth,wh=wrap.clientHeight,pad=40;
+  scale=Math.min((wr-pad*2)/img.width,(wh-pad*2)/img.height);
+  offX=(wr-img.width*scale)/2;offY=(wh-img.height*scale)/2;
+  resizeCanvas();render();
+}
+function resizeCanvas(){canvas.width=wrap.clientWidth;canvas.height=wrap.clientHeight;}
+function zoom(f){
+  const cx=wrap.clientWidth/2,cy=wrap.clientHeight/2,nx=scale*f;
+  offX=cx-(cx-offX)*(nx/scale);offY=cy-(cy-offY)*(nx/scale);
+  scale=nx;render();
+}
+function render(){
+  resizeCanvas();
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  if(img)ctx.drawImage(img,offX,offY,img.width*scale,img.height*scale);
+  for(let i=0;i<pins.length;i++)drawPin(pins[i],i);
+  document.getElementById('pin-count').textContent=pins.length+' gateway'+(pins.length!==1?'s':'');
+}
+function drawPin(p,idx){
+  const x=offX+p.rx*scale*img.width;
+  const y=offY+p.ry*scale*img.height;
+  const r=11,tail=18;
+  ctx.save();
+  if(idx===movingPinIdx){
+    ctx.beginPath();ctx.arc(x,y-tail,r+7,0,Math.PI*2);
+    ctx.strokeStyle='#1976d2';ctx.lineWidth=3;
+    ctx.setLineDash([4,3]);ctx.stroke();ctx.setLineDash([]);
+  }
+  ctx.shadowColor='rgba(0,0,0,.28)';ctx.shadowBlur=6;ctx.shadowOffsetY=2;
+  ctx.beginPath();
+  ctx.arc(x,y-tail,r,0,Math.PI*2);
+  ctx.moveTo(x-r*.45,y-tail+r*.7);ctx.lineTo(x,y);ctx.lineTo(x+r*.45,y-tail+r*.7);
+  ctx.fillStyle=FILLS[p.status];ctx.fill();
+  ctx.shadowBlur=0;
+  ctx.beginPath();ctx.arc(x,y-tail,r,0,Math.PI*2);
+  ctx.strokeStyle=COLORS[p.status];ctx.lineWidth=2;ctx.stroke();
+  ctx.beginPath();ctx.arc(x,y-tail,4,0,Math.PI*2);
+  ctx.fillStyle='rgba(255,255,255,.75)';ctx.fill();
+  ctx.restore();
+  if(p.label&&scale>0.35){
+    ctx.save();
+    ctx.font='bold 10px -apple-system,sans-serif';
+    const fw=ctx.measureText(p.label).width+10;
+    ctx.fillStyle='rgba(25,25,25,.82)';
+    rrect(ctx,x-fw/2,y-tail*2-9,fw,16,4);ctx.fill();
+    ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(p.label,x,y-tail*2+2);
+    ctx.restore();
+  }
+}
+function rrect(c,x,y,w,h,r){
+  c.beginPath();c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.quadraticCurveTo(x+w,y,x+w,y+r);
+  c.lineTo(x+w,y+h-r);c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  c.lineTo(x+r,y+h);c.quadraticCurveTo(x,y+h,x,y+h-r);c.lineTo(x,y+r);
+  c.quadraticCurveTo(x,y,x+r,y);c.closePath();
+}
 
+// ── Interaction ───────────────────────────────────────────
+function getXY(e){
+  const r=canvas.getBoundingClientRect();
+  let src;
+  if(e.touches&&e.touches.length>0)src=e.touches[0];
+  else if(e.changedTouches&&e.changedTouches.length>0)src=e.changedTouches[0];
+  else src=e;
+  return[src.clientX-r.left,src.clientY-r.top];
+}
+function toRel(cx,cy){
+  if(!img)return null;
+  return{rx:(cx-offX)/(scale*img.width),ry:(cy-offY)/(scale*img.height)};
+}
+function hitTest(cx,cy){
+  if(!img)return -1;
+  for(let i=pins.length-1;i>=0;i--){
+    const px=offX+pins[i].rx*scale*img.width;
+    const py=offY+pins[i].ry*scale*img.height;
+    if(Math.hypot(cx-px,cy-(py-18))<20)return i;
+  }
+  return -1;
+}
 
-if __name__ == "__main__":
-    print("Gateway Planner backend running")
-    print(f"OpenCV version: {cv2.__version__}")
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5050)), debug=False)
+canvas.addEventListener('mousedown',function(e){
+  const xy=getXY(e);
+  isDragging=true;lastTX=xy[0];lastTY=xy[1];didDrag=false;
+});
+canvas.addEventListener('touchstart',function(e){
+  e.preventDefault();
+  const xy=getXY(e);
+  isDragging=true;lastTX=xy[0];lastTY=xy[1];didDrag=false;
+},{passive:false});
+canvas.addEventListener('mousemove',function(e){
+  if(!isDragging)return;
+  const xy=getXY(e);
+  const dx=xy[0]-lastTX,dy=xy[1]-lastTY;
+  if(Math.abs(dx)+Math.abs(dy)>4)didDrag=true;
+  offX+=dx;offY+=dy;lastTX=xy[0];lastTY=xy[1];render();
+});
+canvas.addEventListener('touchmove',function(e){
+  e.preventDefault();
+  if(!isDragging)return;
+  const xy=getXY(e);
+  const dx=xy[0]-lastTX,dy=xy[1]-lastTY;
+  if(Math.abs(dx)+Math.abs(dy)>4)didDrag=true;
+  offX+=dx;offY+=dy;lastTX=xy[0];lastTY=xy[1];render();
+},{passive:false});
+canvas.addEventListener('mouseup',handleTap);
+canvas.addEventListener('touchend',function(e){e.preventDefault();handleTap(e);},{passive:false});
+
+function handleTap(e){
+  if(!isDragging)return;
+  isDragging=false;
+  if(didDrag)return;
+  const xy=getXY(e);
+  const cx=xy[0],cy=xy[1];
+
+  // If in move mode — place pin at clicked location
+  if(movingPinIdx>=0){
+    const rel=toRel(cx,cy);
+    if(rel&&rel.rx>0.001&&rel.rx<0.999&&rel.ry>0.001&&rel.ry<0.999){
+      pins[movingPinIdx].rx=rel.rx;
+      pins[movingPinIdx].ry=rel.ry;
+      render();
+    }
+    cancelMove();
+    return;
+  }
+
+  // Add pin mode
+  if(mode==='add'){
+    if(!img)return;
+    const rel=toRel(cx,cy);
+    if(!rel||rel.rx<=0||rel.rx>=1||rel.ry<=0||rel.ry>=1)return;
+    pins.push({id:pinIdCounter++,rx:rel.rx,ry:rel.ry,status:curStatus,label:''});
+    render();
+    return;
+  }
+
+  // Pan mode — click pin to open modal
+  const hit=hitTest(cx,cy);
+  if(hit>=0)openModal(hit);
+}
+
+canvas.addEventListener('wheel',function(e){
+  e.preventDefault();
+  const f=e.deltaY<0?1.1:0.9;
+  const r=canvas.getBoundingClientRect();
+  const cx=e.clientX-r.left,cy=e.clientY-r.top,nx=scale*f;
+  offX=cx-(cx-offX)*(nx/scale);offY=cy-(cy-offY)*(nx/scale);
+  scale=nx;render();
+},{passive:false});
+
+// ── Modals ────────────────────────────────────────────────
+function setStatus(s,el){
+  curStatus=s;
+  document.querySelectorAll('.status-btn').forEach(function(b){b.classList.remove('active-sel');});
+  el.classList.add('active-sel');
+}
+function openModal(idx){
+  editIdx=idx;
+  const p=pins[idx];
+  document.getElementById('m-label').value=p.label||'';
+  document.getElementById('m-room-context').value=p.roomContext||'';
+  document.getElementById('modal').classList.add('open');
+  setTimeout(function(){document.getElementById('m-label').focus();},100);
+}
+function selectMS(el){
+  document.querySelectorAll('.ms-btn').forEach(function(b){b.classList.remove('sel');});
+  el.classList.add('sel');
+}
+function savePin(){
+  if(editIdx<0)return;
+  pins[editIdx].label=document.getElementById('m-label').value.trim();
+  pins[editIdx].roomContext=document.getElementById('m-room-context').value;
+  closeModal();render();
+}
+function deletePin(){
+  if(editIdx>=0){pins.splice(editIdx,1);closeModal();render();}
+}
+function closeModal(){
+  document.getElementById('modal').classList.remove('open');
+  editIdx=-1;
+}
+function clearPins(){
+  if(pins.length&&confirm('Clear all '+pins.length+' pins?')){pins=[];render();}
+}
+
+// ── Export ────────────────────────────────────────────────
+function showExportMenu(e){
+  const menu=document.getElementById('export-menu');
+  const r=e.target.getBoundingClientRect();
+  menu.style.top=(r.bottom+6)+'px';
+  menu.style.left=r.left+'px';
+  menu.style.display='block';
+  setTimeout(function(){document.addEventListener('click',hideExportMenu,{once:true});},10);
+}
+function hideExportMenu(){document.getElementById('export-menu').style.display='none';}
+function buildExportCanvas(){
+  if(!img){alert('Load a floor plan first.');return null;}
+  const exp=document.createElement('canvas');
+  exp.width=img.width;exp.height=img.height;
+  const ec=exp.getContext('2d');
+  ec.drawImage(img,0,0);
+  const sv=scale,sox=offX,soy=offY;
+  scale=1;offX=0;offY=0;
+  for(let i=0;i<pins.length;i++){
+    const p=pins[i];
+    const x=p.rx*img.width,y=p.ry*img.height,r=14,tail=22;
+    ec.save();
+    ec.beginPath();ec.arc(x,y-tail,r,0,Math.PI*2);
+    ec.moveTo(x-r*.45,y-tail+r*.7);ec.lineTo(x,y);ec.lineTo(x+r*.45,y-tail+r*.7);
+    ec.fillStyle=FILLS[p.status];ec.fill();
+    ec.beginPath();ec.arc(x,y-tail,r,0,Math.PI*2);
+    ec.strokeStyle=COLORS[p.status];ec.lineWidth=2.5;ec.stroke();
+    ec.beginPath();ec.arc(x,y-tail,5,0,Math.PI*2);
+    ec.fillStyle='rgba(255,255,255,.75)';ec.fill();
+    if(p.label){
+      ec.font='bold 13px Arial';
+      const fw=ec.measureText(p.label).width+12;
+      ec.fillStyle='rgba(20,20,20,.85)';
+      rrect(ec,x-fw/2,y-tail*2-10,fw,18,5);ec.fill();
+      ec.fillStyle='#fff';ec.textAlign='center';ec.textBaseline='middle';
+      ec.fillText(p.label,x,y-tail*2+2);
+    }
+    ec.restore();
+  }
+  scale=sv;offX=sox;offY=soy;
+  return exp;
+}
+function exportPNG(){
+  const exp=buildExportCanvas();if(!exp)return;
+  const a=document.createElement('a');
+  a.download='gateway-plan.png';
+  a.href=exp.toDataURL('image/png');
+  a.click();
+}
+function exportPDF(){
+  const exp=buildExportCanvas();if(!exp)return;
+  const iw=exp.width,ih=exp.height;
+  let pw=iw*(72/96),ph=ih*(72/96);
+  if(pw>2000){const s=2000/pw;pw=2000;ph*=s;}
+  const imgData=exp.toDataURL('image/jpeg',0.92);
+  const raw=atob(imgData.split(',')[1]);
+  const bytes=new Uint8Array(raw.length);
+  for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+  const nl='\n';
+  let pdf='%PDF-1.4'+nl;
+  const offs=[];
+  function obj(n,c){offs[n]=pdf.length;pdf+=n+' 0 obj'+nl+c+nl+'endobj'+nl;}
+  obj(1,'<< /Type /Catalog /Pages 2 0 R >>');
+  obj(2,'<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+  obj(3,'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '+pw.toFixed(1)+' '+ph.toFixed(1)+'] /Contents 4 0 R /Resources << /XObject << /Im1 5 0 R >> >> >>');
+  const st='q '+pw.toFixed(1)+' 0 0 '+ph.toFixed(1)+' 0 0 cm /Im1 Do Q';
+  obj(4,'<< /Length '+st.length+' >>'+nl+'stream'+nl+st+nl+'endstream');
+  const ih2='5 0 obj\n<< /Type /XObject /Subtype /Image /Width '+iw+' /Height '+ih+' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length '+bytes.length+' >>\nstream\n';
+  const if2='\nendstream\nendobj\n';
+  const xp=pdf.length+ih2.length+bytes.length+if2.length;
+  const xr='xref\n0 6\n0000000000 65535 f \n'+offs.slice(1).map(function(o){return String(o).padStart(10,'0')+' 00000 n ';}).join('\n')+'\n';
+  const tr='trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n'+xp+'\n%%EOF';
+  const enc=new TextEncoder();
+  const parts=[enc.encode(pdf),enc.encode(ih2),bytes,enc.encode(if2),enc.encode(xr+tr)];
+  const tot=parts.reduce(function(s,p){return s+p.length;},0);
+  const out=new Uint8Array(tot);
+  let pos=0;
+  for(const p of parts){out.set(p,pos);pos+=p.length;}
+  const blob=new Blob([out],{type:'application/pdf'});
+  const a=document.createElement('a');
+  a.download='gateway-plan.pdf';
+  a.href=URL.createObjectURL(blob);
+  a.click();
+}
+
+window.addEventListener('dragover',function(e){e.preventDefault();});
+window.addEventListener('drop',function(e){
+  e.preventDefault();
+  const f=e.dataTransfer.files[0];if(!f)return;
+  if(f.type==='application/pdf'||f.name.toLowerCase().endsWith('.pdf'))loadPDF(f);
+  else if(f.type.startsWith('image/'))loadImageFile(f);
+});
+window.addEventListener('resize',function(){if(img)render();else resizeCanvas();});
+resizeCanvas();render();
+</script>
+</body>
+</html>
