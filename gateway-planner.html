@@ -14,19 +14,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 button{border:1px solid #d0d0d0;background:#fff;border-radius:8px;padding:7px 13px;font-size:13px;cursor:pointer;color:#333;display:flex;align-items:center;gap:5px;font-weight:500;transition:background .15s;white-space:nowrap}
 button:disabled{opacity:.4;cursor:not-allowed}
 button:not(:disabled):active{background:#f0f0f0}
-.status-btn{border-radius:20px;padding:6px 12px;font-size:12px;font-weight:600}
-.status-btn.green{background:#e8f5e9;color:#2e7d32;border-color:#a5d6a7}
-.status-btn.red{background:#ffebee;color:#c62828;border-color:#ef9a9a}
-.status-btn.dark{background:#eceff1;color:#37474f;border-color:#b0bec5}
-.status-btn.orange{background:#fff3e0;color:#e65100;border-color:#ffcc80}
-.status-btn.active-sel{outline:3px solid #1976d2;outline-offset:1px}
-.mode-btn{border-radius:8px;padding:7px 13px;font-size:13px;font-weight:600}
+.mode-btn{border-radius:8px;font-weight:600}
 .mode-btn.active{background:#1a1a2e;color:#fff;border-color:#1a1a2e}
 #ai-btn{background:#5c35b5;color:#fff;border:none;font-weight:600;font-size:13px;padding:8px 16px;border-radius:10px}
-#ai-btn:not(:disabled):active{opacity:.85}
 #upload-btn{background:#f0f7ff;color:#1565c0;border-color:#90caf9}
 #clear-btn{background:#fff8e1;color:#f57f17;border-color:#ffe082}
-#settings-btn{background:#f1f1f1;color:#555;border-color:#ccc;font-size:12px}
 #canvas-wrap{flex:1;overflow:hidden;position:relative;background:#e8eaed}
 #fp-canvas{position:absolute;top:0;left:0;touch-action:none}
 #zoom-bar{position:absolute;bottom:16px;right:16px;display:flex;gap:6px;z-index:50}
@@ -43,16 +35,11 @@ button:not(:disabled):active{background:#f0f0f0}
 #drop-overlay input{display:none}
 #modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200;align-items:center;justify-content:center}
 #modal.open{display:flex}
-#modal-box{background:#fff;border-radius:14px;padding:22px;width:300px;box-shadow:0 8px 32px rgba(0,0,0,.2)}
+#modal-box{background:#fff;border-radius:14px;padding:22px;width:320px;box-shadow:0 8px 32px rgba(0,0,0,.2);max-height:90vh;overflow-y:auto}
 #modal-box h3{font-size:15px;margin-bottom:14px;color:#1a1a1a}
 #modal-box input[type=text]{width:100%;border:1px solid #ccc;border-radius:8px;padding:9px 11px;font-size:14px;margin-bottom:12px}
-.modal-statuses{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
-.ms-btn{border-radius:10px;padding:10px;text-align:center;font-size:12px;font-weight:600;cursor:pointer;border:2px solid transparent}
-.ms-btn.sel{outline:3px solid #1976d2}
-.ms-green{background:#e8f5e9;color:#2e7d32;border-color:#a5d6a7}
-.ms-red{background:#ffebee;color:#c62828;border-color:#ef9a9a}
-.ms-dark{background:#eceff1;color:#37474f;border-color:#b0bec5}
-.ms-orange{background:#fff3e0;color:#e65100;border-color:#ffcc80}
+.room-ctx-label{display:block;font-size:12px;color:#666;margin-bottom:5px;font-weight:500}
+#m-room-context{width:100%;border:1px solid #ccc;border-radius:8px;padding:9px 11px;font-size:13px;background:#fff;margin-bottom:14px}
 .modal-actions{display:flex;gap:8px;flex-wrap:wrap}
 .modal-actions button{flex:1;min-width:60px;padding:10px;border-radius:10px;font-size:13px;font-weight:600}
 #m-save{background:#1a7a4a;color:#fff;border-color:#1a7a4a}
@@ -97,17 +84,9 @@ button:not(:disabled):active{background:#f0f0f0}
     <button class="mode-btn" id="mode-add" onclick="setMode('add')">&#65291; Add Pin</button>
   </div>
   <div class="tb-sep"></div>
-  <div class="tb-group">
-    <span style="font-size:12px;color:#888">Status:</span>
-    <button class="status-btn green active-sel" onclick="setStatus('green',this)">&#9679; Active</button>
-    <button class="status-btn red" onclick="setStatus('red',this)">&#9679; Disconnected</button>
-    <button class="status-btn dark" onclick="setStatus('dark',this)">&#9679; Standby</button>
-    <button class="status-btn orange" onclick="setStatus('orange',this)">&#9888; Warning</button>
-  </div>
-  <div class="tb-sep"></div>
   <button onclick="showExportMenu(event)">&#11015; Export</button>
   <button id="clear-btn" onclick="clearPins()">&#10005; Clear Pins</button>
-  <button id="settings-btn" onclick="openSettings()">&#9881; Settings</button>
+  <button onclick="openSettings()">&#9881; Settings</button>
   <span id="pin-count">0 gateways</span>
 </div>
 
@@ -144,16 +123,62 @@ button:not(:disabled):active{background:#f0f0f0}
   </div>
 </div>
 
+<!-- Pin edit modal -->
 <div id="modal">
   <div id="modal-box">
     <h3>Edit Gateway</h3>
     <input type="text" id="m-label" placeholder="Label (e.g. GW-14, Room 204)" maxlength="20">
-    <div class="modal-statuses">
-      <div class="ms-btn ms-green" data-s="green" onclick="selectMS(this)">&#9679; Active</div>
-      <div class="ms-btn ms-red" data-s="red" onclick="selectMS(this)">&#9679; Disconnected</div>
-      <div class="ms-btn ms-dark" data-s="dark" onclick="selectMS(this)">&#9679; Standby</div>
-      <div class="ms-btn ms-orange" data-s="orange" onclick="selectMS(this)">&#9888; Warning</div>
-    </div>
+    <label class="room-ctx-label">Room Context</label>
+    <select id="m-room-context">
+      <option value="">— Select room type —</option>
+      <option>Patient Room</option>
+      <option>Clean Supply Rooms</option>
+      <option>Soiled Utility Rooms</option>
+      <option>Hallway / Corridor</option>
+      <option>Nurses Station</option>
+      <option>Medication Room</option>
+      <option>ICU</option>
+      <option>NICU</option>
+      <option>ED</option>
+      <option>Isolation Rooms</option>
+      <option>Trauma Bay</option>
+      <option>Triage Room</option>
+      <option>Operating Room</option>
+      <option>PACU</option>
+      <option>Endoscopy</option>
+      <option>Cath Lab</option>
+      <option>Laboratory</option>
+      <option>Urgent Care</option>
+      <option>Sterile Processing</option>
+      <option>Staff Break Room</option>
+      <option>Charting / Work Rooms</option>
+      <option>Conference Rooms</option>
+      <option>Security / Dispatch / Command Center (SOC/EOC)</option>
+      <option>Loading Dock / Receiving</option>
+      <option>IT / Network Closets (IDF/MDF)</option>
+      <option>Mechanical / Electrical Rooms</option>
+      <option>Entry / Lobby / Reception</option>
+      <option>Ambulance Bay</option>
+      <option>Pharmacy</option>
+      <option>Infusion Center</option>
+      <option>Dialysis Unit</option>
+      <option>Office / Admin Area</option>
+      <option>Storage Room</option>
+      <option>Supply Closet</option>
+      <option>Behavioral Health Unit</option>
+      <option>Pediatric Unit</option>
+      <option>Oncology Unit</option>
+      <option>Physical Therapy</option>
+      <option>Labor and Delivery</option>
+      <option>Burn Unit</option>
+      <option>Stairwell</option>
+      <option>Elevator Lobby</option>
+      <option>Exterior / Parking Garage</option>
+      <option>MRI</option>
+      <option>CT</option>
+      <option>X-Ray</option>
+      <option>Ultrasound</option>
+    </select>
     <div class="modal-actions">
       <button id="m-save" onclick="savePin()">Save</button>
       <button id="m-move" onclick="startMovePin()">&#8678; Move</button>
@@ -163,6 +188,7 @@ button:not(:disabled):active{background:#f0f0f0}
   </div>
 </div>
 
+<!-- Settings modal -->
 <div id="settings-modal">
   <div id="settings-box">
     <h3>&#9881; Settings</h3>
@@ -172,7 +198,7 @@ button:not(:disabled):active{background:#f0f0f0}
       <div class="setting-note">URL where server.py is running.</div>
     </div>
     <div class="setting-row">
-      <label>Anthropic API Key (for Claude validation)</label>
+      <label>Anthropic API Key</label>
       <input type="password" id="s-key" placeholder="sk-ant-... (optional)">
     </div>
     <div class="setting-row">
@@ -199,14 +225,13 @@ const ctx=canvas.getContext('2d');
 const wrap=document.getElementById('canvas-wrap');
 
 let img=null,imgBlob=null,pins=[],scale=1,offX=0,offY=0;
-let curStatus='green',editIdx=-1,pinIdCounter=0;
+let editIdx=-1,pinIdCounter=0;
 let pdfDoc=null,pdfPage=1,pdfTotal=1;
-let mode='pan';
-let isDragging=false,lastTX=0,lastTY=0,didDrag=false;
+let mode='pan',isDragging=false,lastTX=0,lastTY=0,didDrag=false;
 let movingPinIdx=-1;
 
-const COLORS={green:'#2e7d32',red:'#c62828',dark:'#455a64',orange:'#e65100'};
-const FILLS={green:'#66bb6a',red:'#ef5350',dark:'#78909c',orange:'#ffa726'};
+const PIN_COLOR='#2e7d32';
+const PIN_FILL='#66bb6a';
 
 // ── Settings ──────────────────────────────────────────────
 function getSettings(){
@@ -229,15 +254,18 @@ function saveSettings(){
   localStorage.setItem('gw_validate',document.getElementById('s-validate').value);
   closeSettings();
 }
-function closeSettings(){document.getElementById('settings-modal').classList.remove('open')}
+function closeSettings(){document.getElementById('settings-modal').classList.remove('open');}
 
 // ── Mode ──────────────────────────────────────────────────
 function setMode(m){
   mode=m;
-  ['pan','add'].forEach(n=>document.getElementById('mode-'+n).classList.toggle('active',n===m));
+  ['pan','add'].forEach(function(n){
+    document.getElementById('mode-'+n).classList.toggle('active',n===m);
+  });
   canvas.style.cursor=m==='add'?'crosshair':'grab';
   document.getElementById('info-bar').textContent=
-    m==='add'?'Click anywhere on the floor plan to place a new gateway':'Click a pin to edit · Drag to pan · Scroll to zoom';
+    m==='add'?'Click anywhere on the floor plan to place a gateway':
+    'Click a pin to edit or move it \u00b7 Drag to pan \u00b7 Scroll to zoom';
 }
 
 // ── Move pin ──────────────────────────────────────────────
@@ -255,13 +283,11 @@ function cancelMove(){
   movingPinIdx=-1;
   document.getElementById('move-banner').style.display='none';
   canvas.style.cursor=mode==='add'?'crosshair':'grab';
-  document.getElementById('info-bar').textContent=
-    mode==='add'?'Click anywhere on the floor plan to place a new gateway':'Click a pin to edit \u00b7 Drag to pan \u00b7 Scroll to zoom';
 }
 document.addEventListener('keydown',function(e){if(e.key==='Escape'&&movingPinIdx>=0)cancelMove();});
 
 // ── File loading ──────────────────────────────────────────
-function triggerUpload(){document.getElementById('file-input').click()}
+function triggerUpload(){document.getElementById('file-input').click();}
 function loadFile(e){
   const file=e.target.files[0];if(!file)return;
   if(file.type==='application/pdf'||file.name.toLowerCase().endsWith('.pdf'))loadPDF(file);
@@ -328,8 +354,8 @@ async function runAI(){
   msg.textContent='Sending to backend...';
   sub.textContent='OpenCV wall detection + room segmentation';
   try{
-    const health=await fetch(s.url+'/health').catch(()=>null);
-    if(!health||!health.ok)throw new Error('Cannot reach backend at '+s.url);
+    const health=await fetch(s.url+'/health').catch(function(){return null;});
+    if(!health||!health.ok)throw new Error('Cannot reach backend at '+s.url+'\n\nMake sure server.py is running.');
     const fd=new FormData();
     fd.append('image',imgBlob,'floorplan.png');
     fd.append('api_key',s.key);
@@ -339,7 +365,9 @@ async function runAI(){
     const data=await resp.json();
     if(!resp.ok)throw new Error(data.error||'Backend error '+resp.status);
     if(data.error)throw new Error(data.error);
-    pins=data.pins.map(function(p,i){return{id:i,rx:p.rx,ry:p.ry,label:p.label,status:p.status||'green'};});
+    pins=data.pins.map(function(p,i){
+      return{id:i,rx:p.rx,ry:p.ry,label:p.label,roomContext:''};
+    });
     pinIdCounter=pins.length;
     msg.textContent='Done! '+pins.length+' gateways placed.';
     sub.textContent=data.total_rooms_detected+' rooms detected';
@@ -387,28 +415,32 @@ function drawPin(p,idx){
   ctx.beginPath();
   ctx.arc(x,y-tail,r,0,Math.PI*2);
   ctx.moveTo(x-r*.45,y-tail+r*.7);ctx.lineTo(x,y);ctx.lineTo(x+r*.45,y-tail+r*.7);
-  ctx.fillStyle=FILLS[p.status];ctx.fill();
+  ctx.fillStyle=PIN_FILL;ctx.fill();
   ctx.shadowBlur=0;
   ctx.beginPath();ctx.arc(x,y-tail,r,0,Math.PI*2);
-  ctx.strokeStyle=COLORS[p.status];ctx.lineWidth=2;ctx.stroke();
+  ctx.strokeStyle=PIN_COLOR;ctx.lineWidth=2;ctx.stroke();
   ctx.beginPath();ctx.arc(x,y-tail,4,0,Math.PI*2);
   ctx.fillStyle='rgba(255,255,255,.75)';ctx.fill();
   ctx.restore();
-  if(p.label&&scale>0.35){
-    ctx.save();
-    ctx.font='bold 10px -apple-system,sans-serif';
-    const fw=ctx.measureText(p.label).width+10;
-    ctx.fillStyle='rgba(25,25,25,.82)';
-    rrect(ctx,x-fw/2,y-tail*2-9,fw,16,4);ctx.fill();
-    ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.fillText(p.label,x,y-tail*2+2);
-    ctx.restore();
+  if(scale>0.35){
+    const lbl=p.roomContext?p.roomContext+(p.label?' ('+p.label+')':''):p.label||'';
+    if(lbl){
+      ctx.save();
+      ctx.font='bold 10px -apple-system,sans-serif';
+      const fw=ctx.measureText(lbl).width+10;
+      ctx.fillStyle='rgba(25,25,25,.82)';
+      rrect(ctx,x-fw/2,y-tail*2-9,fw,16,4);ctx.fill();
+      ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText(lbl,x,y-tail*2+2);
+      ctx.restore();
+    }
   }
 }
 function rrect(c,x,y,w,h,r){
-  c.beginPath();c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.quadraticCurveTo(x+w,y,x+w,y+r);
-  c.lineTo(x+w,y+h-r);c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
-  c.lineTo(x+r,y+h);c.quadraticCurveTo(x,y+h,x,y+h-r);c.lineTo(x,y+r);
+  c.beginPath();c.moveTo(x+r,y);c.lineTo(x+w-r,y);
+  c.quadraticCurveTo(x+w,y,x+w,y+r);c.lineTo(x+w,y+h-r);
+  c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);c.lineTo(x+r,y+h);
+  c.quadraticCurveTo(x,y+h,x,y+h-r);c.lineTo(x,y+r);
   c.quadraticCurveTo(x,y,x+r,y);c.closePath();
 }
 
@@ -434,31 +466,10 @@ function hitTest(cx,cy){
   }
   return -1;
 }
-
-canvas.addEventListener('mousedown',function(e){
-  const xy=getXY(e);
-  isDragging=true;lastTX=xy[0];lastTY=xy[1];didDrag=false;
-});
-canvas.addEventListener('touchstart',function(e){
-  e.preventDefault();
-  const xy=getXY(e);
-  isDragging=true;lastTX=xy[0];lastTY=xy[1];didDrag=false;
-},{passive:false});
-canvas.addEventListener('mousemove',function(e){
-  if(!isDragging)return;
-  const xy=getXY(e);
-  const dx=xy[0]-lastTX,dy=xy[1]-lastTY;
-  if(Math.abs(dx)+Math.abs(dy)>4)didDrag=true;
-  offX+=dx;offY+=dy;lastTX=xy[0];lastTY=xy[1];render();
-});
-canvas.addEventListener('touchmove',function(e){
-  e.preventDefault();
-  if(!isDragging)return;
-  const xy=getXY(e);
-  const dx=xy[0]-lastTX,dy=xy[1]-lastTY;
-  if(Math.abs(dx)+Math.abs(dy)>4)didDrag=true;
-  offX+=dx;offY+=dy;lastTX=xy[0];lastTY=xy[1];render();
-},{passive:false});
+canvas.addEventListener('mousedown',function(e){const xy=getXY(e);isDragging=true;lastTX=xy[0];lastTY=xy[1];didDrag=false;});
+canvas.addEventListener('touchstart',function(e){e.preventDefault();const xy=getXY(e);isDragging=true;lastTX=xy[0];lastTY=xy[1];didDrag=false;},{passive:false});
+canvas.addEventListener('mousemove',function(e){if(!isDragging)return;const xy=getXY(e);const dx=xy[0]-lastTX,dy=xy[1]-lastTY;if(Math.abs(dx)+Math.abs(dy)>4)didDrag=true;offX+=dx;offY+=dy;lastTX=xy[0];lastTY=xy[1];render();});
+canvas.addEventListener('touchmove',function(e){e.preventDefault();if(!isDragging)return;const xy=getXY(e);const dx=xy[0]-lastTX,dy=xy[1]-lastTY;if(Math.abs(dx)+Math.abs(dy)>4)didDrag=true;offX+=dx;offY+=dy;lastTX=xy[0];lastTY=xy[1];render();},{passive:false});
 canvas.addEventListener('mouseup',handleTap);
 canvas.addEventListener('touchend',function(e){e.preventDefault();handleTap(e);},{passive:false});
 
@@ -468,34 +479,23 @@ function handleTap(e){
   if(didDrag)return;
   const xy=getXY(e);
   const cx=xy[0],cy=xy[1];
-
-  // If in move mode — place pin at clicked location
   if(movingPinIdx>=0){
     const rel=toRel(cx,cy);
     if(rel&&rel.rx>0.001&&rel.rx<0.999&&rel.ry>0.001&&rel.ry<0.999){
-      pins[movingPinIdx].rx=rel.rx;
-      pins[movingPinIdx].ry=rel.ry;
-      render();
+      pins[movingPinIdx].rx=rel.rx;pins[movingPinIdx].ry=rel.ry;render();
     }
-    cancelMove();
-    return;
+    cancelMove();return;
   }
-
-  // Add pin mode
   if(mode==='add'){
     if(!img)return;
     const rel=toRel(cx,cy);
     if(!rel||rel.rx<=0||rel.rx>=1||rel.ry<=0||rel.ry>=1)return;
-    pins.push({id:pinIdCounter++,rx:rel.rx,ry:rel.ry,status:curStatus,label:''});
-    render();
-    return;
+    pins.push({id:pinIdCounter++,rx:rel.rx,ry:rel.ry,label:'',roomContext:''});
+    render();return;
   }
-
-  // Pan mode — click pin to open modal
   const hit=hitTest(cx,cy);
   if(hit>=0)openModal(hit);
 }
-
 canvas.addEventListener('wheel',function(e){
   e.preventDefault();
   const f=e.deltaY<0?1.1:0.9;
@@ -505,51 +505,30 @@ canvas.addEventListener('wheel',function(e){
   scale=nx;render();
 },{passive:false});
 
-// ── Modals ────────────────────────────────────────────────
-function setStatus(s,el){
-  curStatus=s;
-  document.querySelectorAll('.status-btn').forEach(function(b){b.classList.remove('active-sel');});
-  el.classList.add('active-sel');
-}
+// ── Modal ─────────────────────────────────────────────────
 function openModal(idx){
   editIdx=idx;
   const p=pins[idx];
   document.getElementById('m-label').value=p.label||'';
-  document.querySelectorAll('.ms-btn').forEach(function(b){
-    b.classList.remove('sel');
-    if(b.dataset.s===p.status)b.classList.add('sel');
-  });
+  document.getElementById('m-room-context').value=p.roomContext||'';
   document.getElementById('modal').classList.add('open');
   setTimeout(function(){document.getElementById('m-label').focus();},100);
-}
-function selectMS(el){
-  document.querySelectorAll('.ms-btn').forEach(function(b){b.classList.remove('sel');});
-  el.classList.add('sel');
 }
 function savePin(){
   if(editIdx<0)return;
   pins[editIdx].label=document.getElementById('m-label').value.trim();
-  const sel=document.querySelector('.ms-btn.sel');
-  if(sel)pins[editIdx].status=sel.dataset.s;
+  pins[editIdx].roomContext=document.getElementById('m-room-context').value;
   closeModal();render();
 }
-function deletePin(){
-  if(editIdx>=0){pins.splice(editIdx,1);closeModal();render();}
-}
-function closeModal(){
-  document.getElementById('modal').classList.remove('open');
-  editIdx=-1;
-}
-function clearPins(){
-  if(pins.length&&confirm('Clear all '+pins.length+' pins?')){pins=[];render();}
-}
+function deletePin(){if(editIdx>=0){pins.splice(editIdx,1);closeModal();render();}}
+function closeModal(){document.getElementById('modal').classList.remove('open');editIdx=-1;}
+function clearPins(){if(pins.length&&confirm('Clear all '+pins.length+' pins?')){pins=[];render();}}
 
 // ── Export ────────────────────────────────────────────────
 function showExportMenu(e){
   const menu=document.getElementById('export-menu');
   const r=e.target.getBoundingClientRect();
-  menu.style.top=(r.bottom+6)+'px';
-  menu.style.left=r.left+'px';
+  menu.style.top=(r.bottom+6)+'px';menu.style.left=r.left+'px';
   menu.style.display='block';
   setTimeout(function(){document.addEventListener('click',hideExportMenu,{once:true});},10);
 }
@@ -568,18 +547,19 @@ function buildExportCanvas(){
     ec.save();
     ec.beginPath();ec.arc(x,y-tail,r,0,Math.PI*2);
     ec.moveTo(x-r*.45,y-tail+r*.7);ec.lineTo(x,y);ec.lineTo(x+r*.45,y-tail+r*.7);
-    ec.fillStyle=FILLS[p.status];ec.fill();
+    ec.fillStyle=PIN_FILL;ec.fill();
     ec.beginPath();ec.arc(x,y-tail,r,0,Math.PI*2);
-    ec.strokeStyle=COLORS[p.status];ec.lineWidth=2.5;ec.stroke();
+    ec.strokeStyle=PIN_COLOR;ec.lineWidth=2.5;ec.stroke();
     ec.beginPath();ec.arc(x,y-tail,5,0,Math.PI*2);
     ec.fillStyle='rgba(255,255,255,.75)';ec.fill();
-    if(p.label){
+    const lbl=p.roomContext?p.roomContext+(p.label?' ('+p.label+')':''):p.label||'';
+    if(lbl){
       ec.font='bold 13px Arial';
-      const fw=ec.measureText(p.label).width+12;
+      const fw=ec.measureText(lbl).width+12;
       ec.fillStyle='rgba(20,20,20,.85)';
       rrect(ec,x-fw/2,y-tail*2-10,fw,18,5);ec.fill();
       ec.fillStyle='#fff';ec.textAlign='center';ec.textBaseline='middle';
-      ec.fillText(p.label,x,y-tail*2+2);
+      ec.fillText(lbl,x,y-tail*2+2);
     }
     ec.restore();
   }
@@ -588,10 +568,7 @@ function buildExportCanvas(){
 }
 function exportPNG(){
   const exp=buildExportCanvas();if(!exp)return;
-  const a=document.createElement('a');
-  a.download='gateway-plan.png';
-  a.href=exp.toDataURL('image/png');
-  a.click();
+  const a=document.createElement('a');a.download='gateway-plan.png';a.href=exp.toDataURL('image/png');a.click();
 }
 function exportPDF(){
   const exp=buildExportCanvas();if(!exp)return;
@@ -602,9 +579,7 @@ function exportPDF(){
   const raw=atob(imgData.split(',')[1]);
   const bytes=new Uint8Array(raw.length);
   for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
-  const nl='\n';
-  let pdf='%PDF-1.4'+nl;
-  const offs=[];
+  const nl='\n';let pdf='%PDF-1.4'+nl;const offs=[];
   function obj(n,c){offs[n]=pdf.length;pdf+=n+' 0 obj'+nl+c+nl+'endobj'+nl;}
   obj(1,'<< /Type /Catalog /Pages 2 0 R >>');
   obj(2,'<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
@@ -619,14 +594,10 @@ function exportPDF(){
   const enc=new TextEncoder();
   const parts=[enc.encode(pdf),enc.encode(ih2),bytes,enc.encode(if2),enc.encode(xr+tr)];
   const tot=parts.reduce(function(s,p){return s+p.length;},0);
-  const out=new Uint8Array(tot);
-  let pos=0;
+  const out=new Uint8Array(tot);let pos=0;
   for(const p of parts){out.set(p,pos);pos+=p.length;}
   const blob=new Blob([out],{type:'application/pdf'});
-  const a=document.createElement('a');
-  a.download='gateway-plan.pdf';
-  a.href=URL.createObjectURL(blob);
-  a.click();
+  const a=document.createElement('a');a.download='gateway-plan.pdf';a.href=URL.createObjectURL(blob);a.click();
 }
 
 window.addEventListener('dragover',function(e){e.preventDefault();});
