@@ -41,7 +41,7 @@ button:not(:disabled):active{background:#f0f0f0}
 #drop-overlay input{display:none}
 #modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200;align-items:center;justify-content:center}
 #modal.open{display:flex}
-#modal-box{background:#fff;border-radius:14px;padding:22px;width:300px;box-shadow:0 8px 32px rgba(0,0,0,.2)}
+#modal-box{background:#fff;border-radius:14px;padding:22px;width:320px;box-shadow:0 8px 32px rgba(0,0,0,.2)}
 #modal-box h3{font-size:15px;margin-bottom:14px;color:#1a1a1a}
 #modal-box input[type=text]{width:100%;border:1px solid #ccc;border-radius:8px;padding:9px 11px;font-size:14px;margin-bottom:12px}
 .modal-statuses{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
@@ -146,7 +146,60 @@ button:not(:disabled):active{background:#f0f0f0}
 <div id="modal">
   <div id="modal-box">
     <h3>Edit Gateway</h3>
-    <input type="text" id="m-label" placeholder="Label (e.g. GW-14, Room 204)" maxlength="20">
+
+    <!-- Room context dropdown -->
+    <div style="margin-bottom:12px">
+      <label style="display:block;font-size:12px;color:#666;margin-bottom:5px;font-weight:500">Room Context</label>
+      <select id="m-room-context" style="width:100%;border:1px solid #ccc;border-radius:8px;padding:9px 11px;font-size:13px;background:#fff">
+        <option value="">— Select room type —</option>
+        <option>Patient Room</option>
+        <option>Clean Supply Rooms</option>
+        <option>Soiled Utility Rooms</option>
+        <option>Hallway / Corridor</option>
+        <option>Nurses Station</option>
+        <option>Medication Room</option>
+        <option>ICU</option><option>NICU</option><option>ED</option>
+        <option>Isolation Rooms</option>
+        <option>Trauma Bay</option>
+        <option>Triage Room</option>
+        <option>Operating Room</option>
+        <option>PACU</option><option>Endoscopy</option><option>Cath Lab</option>
+        <option>Laboratory</option>
+        <option>Urgent Care</option>
+        <option>Sterile Processing</option>
+        <option>Staff Break Room</option>
+        <option>Charting / Work Rooms</option>
+        <option>Conference Rooms</option>
+        <option>Security / Dispatch / Command Center (SOC/EOC)</option>
+        <option>Loading Dock / Receiving</option>
+        <option>IT / Network Closets (IDF/MDF)</option>
+        <option>Mechanical / Electrical Rooms</option>
+        <option>Entry / Lobby / Reception</option>
+        <option>Ambulance Bay</option>
+        <option>Pharmacy</option><option>Infusion Center</option>
+        <option>Dialysis Unit</option>
+        <option>Office / Admin Area</option>
+        <option>Storage Room</option>
+        <option>Supply Closet</option>
+        <option>Behavioral Health Unit</option>
+        <option>Pediatric Unit</option>
+        <option>Oncology Unit</option>
+        <option>Physical Therapy</option>
+        <option>Labor &amp; Delivery</option>
+        <option>Burn Unit</option>
+        <option>Stairwell</option>
+        <option>Elevator Lobby</option>
+        <option>Exterior / Parking Garage</option>
+        <option>MRI</option><option>CT</option><option>X-Ray</option><option>Ultrasound</option>
+      </select>
+    </div>
+
+    <!-- Manual label override -->
+    <div style="margin-bottom:12px">
+      <label style="display:block;font-size:12px;color:#666;margin-bottom:5px;font-weight:500">Label override <span style="font-weight:400;color:#aaa">(optional — replaces room type)</span></label>
+      <input type="text" id="m-label" placeholder="e.g. GW-14, Room 204" maxlength="30">
+    </div>
+
     <div class="modal-statuses">
       <div class="ms-btn ms-green"  data-s="green"  onclick="selectMS(this)">● Active</div>
       <div class="ms-btn ms-red"    data-s="red"    onclick="selectMS(this)">● Disconnected</div>
@@ -205,7 +258,7 @@ let pinIdCounter=0;
 let pdfDoc=null, pdfPage=1, pdfTotal=1;
 let mode='pan';
 let isDragging=false, lastTX=0, lastTY=0, didDrag=false;
-let movingPinIdx=-1; // index of pin currently in "click to place" move mode
+let movingPinIdx=-1;
 
 function setMode(m){
   mode=m;
@@ -313,7 +366,6 @@ async function renderPDFPage(){
   const off=document.createElement('canvas');
   off.width=vp.width; off.height=vp.height;
   await page.render({canvasContext:off.getContext('2d'),viewport:vp}).promise;
-  // Convert to blob for backend upload
   off.toBlob(blob=>{
     imgBlob=blob;
     const url=URL.createObjectURL(blob);
@@ -332,7 +384,7 @@ async function changePage(d){
   pdfPage=np; pins=[]; await renderPDFPage();
 }
 
-// ── AI Auto-placement (via Python backend) ────────────────
+// ── AI Auto-placement ─────────────────────────────────────
 async function runAI(){
   if(!img||!imgBlob) return;
   const {url, key, validate}=getSettings();
@@ -345,16 +397,12 @@ async function runAI(){
   sub.textContent='OpenCV wall detection + room segmentation';
 
   try{
-    // Check backend is reachable first
     const health=await fetch(url+'/health').catch(()=>null);
     if(!health||!health.ok){
       throw new Error(
-        `Cannot reach backend at ${url}\n\n`+
-        `Make sure server.py is running:\n  python server.py\n\n`+
-        `On iPad, update the Backend URL in ⚙ Settings to your Mac's local IP address.`
+        `Cannot reach backend at ${url}\n\nMake sure server.py is running:\n  python server.py\n\nOn iPad, update the Backend URL in ⚙ Settings to your Mac's local IP address.`
       );
     }
-
     const fd=new FormData();
     fd.append('image', imgBlob, 'floorplan.png');
     fd.append('api_key', key);
@@ -370,7 +418,7 @@ async function runAI(){
     if(data.error) throw new Error(data.error);
 
     pins=data.pins.map((p,i)=>({
-      id:i, rx:p.rx, ry:p.ry, label:p.label, status:p.status||'green'
+      id:i, rx:p.rx, ry:p.ry, label:p.label, status:p.status||'green', roomContext:''
     }));
     pinIdCounter=pins.length;
 
@@ -476,12 +524,23 @@ function endDrag(e){
   let cx,cy;
   if(e.changedTouches){cx=e.changedTouches[0].clientX-r.left;cy=e.changedTouches[0].clientY-r.top;}
   else{cx=e.clientX-r.left;cy=e.clientY-r.top;}
+
+  // If in move mode, place the pin at the clicked location
+  if(movingPinIdx>=0){
+    const rx=(cx-offX)/(scale*img.width), ry=(cy-offY)/(scale*img.height);
+    if(rx>=0&&rx<=1&&ry>=0&&ry<=1){
+      pins[movingPinIdx].rx=rx; pins[movingPinIdx].ry=ry;
+      render();
+    }
+    cancelMove(); return;
+  }
+
   const hit=hitTest(cx,cy);
   if(hit>=0){openModal(hit);return;}
   if(!img) return;
   const rx=(cx-offX)/(scale*img.width), ry=(cy-offY)/(scale*img.height);
   if(rx<0||rx>1||ry<0||ry>1) return;
-  pins.push({id:pinIdCounter++,rx,ry,status:curStatus,label:''});
+  pins.push({id:pinIdCounter++,rx,ry,status:curStatus,label:'',roomContext:''});
   render();
 }
 canvas.addEventListener('wheel',e=>{
@@ -499,23 +558,51 @@ function setStatus(s,el){
   document.querySelectorAll('.status-btn').forEach(b=>b.classList.remove('active-sel'));
   el.classList.add('active-sel');
 }
+
 function openModal(idx){
-  editIdx=idx; const p=pins[idx];
-  document.getElementById('m-label').value=p.label||'';
+  editIdx=idx;
+  const p=pins[idx];
+  // Populate room context dropdown
+  const sel=document.getElementById('m-room-context');
+  sel.value=p.roomContext||'';
+  // Populate label override — strip the " GW-N" suffix to show clean override if any
+  document.getElementById('m-label').value=p.labelOverride||'';
   document.querySelectorAll('.ms-btn').forEach(b=>{
     b.classList.remove('sel'); if(b.dataset.s===p.status) b.classList.add('sel');
   });
   document.getElementById('modal').classList.add('open');
-  setTimeout(()=>document.getElementById('m-label').focus(),100);
+  setTimeout(()=>document.getElementById('m-room-context').focus(),100);
 }
+
 function selectMS(el){ document.querySelectorAll('.ms-btn').forEach(b=>b.classList.remove('sel')); el.classList.add('sel'); }
+
 function savePin(){
   if(editIdx<0) return;
-  pins[editIdx].label=document.getElementById('m-label').value.trim();
-  const sel=document.querySelector('.ms-btn.sel');
-  if(sel) pins[editIdx].status=sel.dataset.s;
+  const p=pins[editIdx];
+  const roomCtx=document.getElementById('m-room-context').value.trim();
+  const override=document.getElementById('m-label').value.trim();
+  const gwNum=String(editIdx+1).padStart(2,'0');
+
+  // Label priority: manual override > room type + GW-N > existing label > GW-N
+  if(override){
+    p.label=override;
+    p.labelOverride=override;
+  } else if(roomCtx){
+    p.label=roomCtx+' GW-'+gwNum;
+    p.labelOverride='';
+  } else {
+    p.label=p.label||'GW-'+gwNum;
+    p.labelOverride='';
+  }
+
+  p.roomContext=roomCtx;
+
+  const selStatus=document.querySelector('.ms-btn.sel');
+  if(selStatus) p.status=selStatus.dataset.s;
+
   closeModal(); render();
 }
+
 function deletePin(){ if(editIdx>=0){pins.splice(editIdx,1);closeModal();render();} }
 function closeModal(){ document.getElementById('modal').classList.remove('open'); editIdx=-1; }
 function clearPins(){ if(pins.length&&confirm('Clear all '+pins.length+' pins?')){pins=[];render();} }
@@ -534,15 +621,12 @@ function hideExportMenu(){
   document.getElementById('export-menu').style.display='none';
 }
 
-// ── Render annotated canvas (shared by PNG + PDF) ─────────
 function buildExportCanvas(){
   if(!img){alert('Load a floor plan first.');return null;}
   const exp=document.createElement('canvas');
   exp.width=img.width; exp.height=img.height;
   const ec=exp.getContext('2d');
   ec.drawImage(img,0,0);
-  const sv=scale,sox=offX,soy=offY;
-  scale=1;offX=0;offY=0;
   pins.forEach(p=>{
     const x=p.rx*img.width,y=p.ry*img.height,r=14,tail=22;
     ec.save();
@@ -563,7 +647,6 @@ function buildExportCanvas(){
     }
     ec.restore();
   });
-  scale=sv;offX=sox;offY=soy;
   return exp;
 }
 
@@ -577,57 +660,36 @@ function exportPNG(){
 
 function exportPDF(){
   const exp=buildExportCanvas(); if(!exp) return;
-  // Use the canvas image data to build a PDF using basic PDF structure
   const imgData=exp.toDataURL('image/jpeg',0.92);
   const iw=exp.width, ih=exp.height;
-  // Scale to fit A0 landscape (largest standard) or keep aspect on Letter
-  // We'll use actual pixel dims mapped to points (1pt = 1/72 inch, assume 96dpi source)
-  const PTS_PER_PX = 72/96;
+  const PTS_PER_PX=72/96;
   let pw=iw*PTS_PER_PX, ph=ih*PTS_PER_PX;
-  // Cap to max 2000pt wide to keep PDF size reasonable
   if(pw>2000){const s=2000/pw;pw=2000;ph=ph*s;}
-
-  // Build minimal valid PDF with embedded JPEG
   const b64=imgData.split(',')[1];
   const raw=atob(b64);
   const bytes=new Uint8Array(raw.length);
   for(let i=0;i<raw.length;i++) bytes[i]=raw.charCodeAt(i);
-
-  // PDF structure
   const nl='\n';
   let pdf='%PDF-1.4'+nl;
   const offsets=[];
-
-  const obj=(n,content)=>{
-    offsets[n]=pdf.length;
-    pdf+=n+' 0 obj'+nl+content+nl+'endobj'+nl;
-  };
-
+  const obj=(n,content)=>{ offsets[n]=pdf.length; pdf+=n+' 0 obj'+nl+content+nl+'endobj'+nl; };
   obj(1,'<< /Type /Catalog /Pages 2 0 R >>');
   obj(2,`<< /Type /Pages /Kids [3 0 R] /Count 1 >>`);
   obj(3,`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pw.toFixed(1)} ${ph.toFixed(1)}] /Contents 4 0 R /Resources << /XObject << /Im1 5 0 R >> >> >>`);
-
   const stream=`q ${pw.toFixed(1)} 0 0 ${ph.toFixed(1)} 0 0 cm /Im1 Do Q`;
   obj(4,`<< /Length ${stream.length} >>${nl}stream${nl}${stream}${nl}endstream`);
-
-  // Image object — binary, written separately
   const imgHeader=`5 0 obj\n<< /Type /XObject /Subtype /Image /Width ${iw} /Height ${ih} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bytes.length} >>\nstream\n`;
   const imgFooter=`\nendstream\nendobj\n`;
-
-  // Build xref
   const xrefPos=pdf.length+imgHeader.length+bytes.length+imgFooter.length;
   const xref=`xref\n0 6\n0000000000 65535 f \n`+
     offsets.slice(1).map(o=>String(o).padStart(10,'0')+' 00000 n ').join('\n')+'\n';
   const trailer=`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF`;
-
-  // Assemble as blob with binary image in the middle
   const enc=new TextEncoder();
   const parts=[enc.encode(pdf),enc.encode(imgHeader),bytes,enc.encode(imgFooter),enc.encode(xref+trailer)];
   const total=parts.reduce((s,p)=>s+p.length,0);
   const out=new Uint8Array(total);
   let pos=0;
   for(const p of parts){out.set(p,pos);pos+=p.length;}
-
   const blob=new Blob([out],{type:'application/pdf'});
   const a=document.createElement('a');
   a.download='gateway-plan.pdf';
